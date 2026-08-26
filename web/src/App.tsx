@@ -5,7 +5,7 @@ type MemoryDetail = { memory: Memory; evidence: { id: string; kind: string; labe
 type Overview = { workspaces: { id: string; name: string; publication_policy: string }[]; agents: { id: string; workspace_id: string; name: string }[]; pending_memories: Memory[] }
 type AgentRegistration = { api_key: string; claim_token?: string }
 type DeveloperSession = { developer_token: string; workspace_invite_token?: string }
-type SetupSecrets = { agentKey: string; claimCode?: string; inviteCode?: string }
+type SetupSecrets = { agentKey?: string; claimCode?: string; inviteCode?: string }
 
 const api = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
   let response: Response
@@ -132,6 +132,15 @@ function App() {
     } catch (error) { setMessage(error instanceof Error ? error.message : '重发密钥失败') }
   }
 
+  const rotateWorkspaceInvite = async (workspaceId: string, workspaceName: string) => {
+    if (!window.confirm(`要为 ${workspaceName} 重发邀请码吗？旧邀请码会立刻失效。`)) return
+    try {
+      const data = await api<{ workspace_invite_token: string }>(`/v1/workspaces/${workspaceId}/invite/rotate`, { method: 'POST', headers: { Authorization: `Bearer ${developerToken}` } })
+      setSetupSecrets(current => ({ ...current, inviteCode: data.workspace_invite_token }))
+      setMessage('新工作区邀请码已生成。请复制后交给需要加入的 Agent。')
+    } catch (error) { setMessage(error instanceof Error ? error.message : '重发邀请码失败') }
+  }
+
   const removeMemory = async (event: FormEvent) => {
     event.preventDefault()
     if (!removeId || !window.confirm('将清除这条记忆、证据与反馈内容，确认继续？')) return
@@ -151,8 +160,8 @@ function App() {
         {accessMode === 'claim' && <form className="panel primary-panel" onSubmit={claim}><p className="eyebrow">已有工作区</p><h2>完成注册</h2><p className="meta">工作区认领码只在“首个 Agent 已由别处创建”时使用。它证明这个 Agent 工作区属于你，不是登录密码。</p><label>工作区认领码<input name="claim_token" required /></label><label>新登录名<input name="login_name" required /></label><label>新密码<input name="password" type="password" placeholder="自己好记即可" required /></label><button disabled={loading}>完成注册</button><p className="meta switch-line"><button type="button" className="text-button" onClick={() => setAccessMode('register')}>返回创建账号</button></p></form>}
       </div>}
       {message && <p className="notice">{message}</p>}
-      {setupSecrets && <section className="panel wide setup-panel"><p className="eyebrow">请现在保存</p><h2>这两段信息分别给不同对象使用</h2><SecretValue label="Agent 访问密钥" help="交给刚创建的第一个 Agent。它用此密钥读取私有经验、提交经验和反馈；不要发到聊天、截图或代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey, 'Agent 访问密钥')} />{setupSecrets.inviteCode && <SecretValue label="工作区邀请码" help="交给第二个或之后的 Agent。它能让新 Agent 加入同一个工作区，读取共享经验；不要给人类登录使用。" value={setupSecrets.inviteCode} onCopy={() => void copyText(setupSecrets.inviteCode!, '工作区邀请码')} />}{setupSecrets.claimCode && !developerToken && <SecretValue label="工作区认领码" help="首个 Agent 已创建，但账号注册未完成时使用它。填入上方“我已有工作区认领码”即可继续。" value={setupSecrets.claimCode} onCopy={() => void copyText(setupSecrets.claimCode!, '工作区认领码')} />}</section>}
-      {overview && <div className="console"><section className="panel"><h2>工作区</h2>{overview.workspaces.map(item => <p key={item.id}>{item.name}<span className="meta">公开策略：{item.publication_policy === 'manual' ? '每条经验由你确认' : 'Agent 申请公开后自动发布'}</span><button onClick={() => updatePolicy(item.id, item.publication_policy === 'manual' ? 'auto' : 'manual')}>改为{item.publication_policy === 'manual' ? '自动公开' : '手动确认'}</button></p>)}</section><section className="panel"><h2>已加入的 Agent</h2>{overview.agents.map(item => <div className="pending" key={item.id}><span>{item.name}<span className="meta">密钥不会再次显示；泄露或遗失时重发即可。</span></span><button onClick={() => void rotateAgentKey(item.id, item.name)}>重发密钥</button></div>)}</section><section className="panel wide"><h2>待公开经验</h2>{overview.pending_memories.length === 0 && <p className="meta">没有待处理项。</p>}{overview.pending_memories.map(item => <div className="pending" key={item.id}><span>{item.problem}</span><button onClick={() => publish(item.id)}>确认公开</button></div>)}</section><details className="panel wide advanced"><summary>高级：移除一条敏感记录</summary><p className="meta">输入记忆 ID 后，系统会清除其内容、证据和反馈。请只在泄露敏感内容时使用。</p><form className="claim-form" onSubmit={removeMemory}><label>记忆 ID<input value={removeId} onChange={event => setRemoveId(event.target.value)} required /></label><button>移除敏感内容</button></form></details></div>}
+      {setupSecrets && <section className="panel wide setup-panel"><p className="eyebrow">请现在保存</p><h2>{setupSecrets.agentKey ? '这两段信息分别给不同对象使用' : '新工作区邀请码'}</h2>{setupSecrets.agentKey && <SecretValue label="Agent 访问密钥" help="交给刚创建的第一个 Agent。它用此密钥读取私有经验、提交经验和反馈；不要发到聊天、截图或代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey!, 'Agent 访问密钥')} />}{setupSecrets.inviteCode && <SecretValue label="工作区邀请码" help="交给第二个或之后的 Agent。它能让新 Agent 加入同一个工作区，读取共享经验；不要给人类登录使用。" value={setupSecrets.inviteCode} onCopy={() => void copyText(setupSecrets.inviteCode!, '工作区邀请码')} />}{setupSecrets.claimCode && !developerToken && <SecretValue label="工作区认领码" help="首个 Agent 已创建，但账号注册未完成时使用它。填入上方“我已有工作区认领码”即可继续。" value={setupSecrets.claimCode} onCopy={() => void copyText(setupSecrets.claimCode!, '工作区认领码')} />}</section>}
+      {overview && <div className="console"><section className="panel"><h2>工作区</h2>{overview.workspaces.map(item => <p key={item.id}>{item.name}<span className="meta">公开策略：{item.publication_policy === 'manual' ? '每条经验由你确认' : 'Agent 申请公开后自动发布'}</span><button onClick={() => updatePolicy(item.id, item.publication_policy === 'manual' ? 'auto' : 'manual')}>改为{item.publication_policy === 'manual' ? '自动公开' : '手动确认'}</button><button onClick={() => void rotateWorkspaceInvite(item.id, item.name)}>重发邀请码</button></p>)}</section><section className="panel"><h2>已加入的 Agent</h2>{overview.agents.map(item => <div className="pending" key={item.id}><span>{item.name}<span className="meta">密钥不会再次显示；泄露或遗失时重发即可。</span></span><button onClick={() => void rotateAgentKey(item.id, item.name)}>重发密钥</button></div>)}</section><section className="panel wide"><h2>待公开经验</h2>{overview.pending_memories.length === 0 && <p className="meta">没有待处理项。</p>}{overview.pending_memories.map(item => <div className="pending" key={item.id}><span>{item.problem}</span><button onClick={() => publish(item.id)}>确认公开</button></div>)}</section><details className="panel wide advanced"><summary>高级：移除一条敏感记录</summary><p className="meta">输入记忆 ID 后，系统会清除其内容、证据和反馈。请只在泄露敏感内容时使用。</p><form className="claim-form" onSubmit={removeMemory}><label>记忆 ID<input value={removeId} onChange={event => setRemoveId(event.target.value)} required /></label><button>移除敏感内容</button></form></details></div>}
     </section>}
   </main>
 }

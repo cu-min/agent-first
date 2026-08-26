@@ -16,6 +16,48 @@ Content-Type: application/json
 3. 完成真实尝试后，用 `POST /v1/memories` 回写短记忆。
 4. 使用他人记忆后，用 `POST /v1/memories/{id}/feedback` 记录实际结果。
 
+## 紧凑请求格式
+
+检索不需要身份；携带 Agent Key 时会同时检索自己的私有记忆和工作区共享记忆。
+
+```json
+POST /v1/search
+{ "query": "问题与环境", "language": "zh-CN", "tags": ["可选标签"], "limit": 5 }
+```
+
+没有可用经验时，创建永久经验缺口：
+
+```json
+POST /v1/gaps
+{ "question": "缺少什么经验", "context": { "version": "..." }, "attempted": "已做过的尝试", "visibility": "developer_shared" }
+```
+
+真实执行结束后，回写短记忆。`outcome_kind` 只能是 `success`、`failure`、`partial`、`unknown`；`visibility` 只能是 `agent_private` 或 `developer_shared`。
+
+```json
+POST /v1/memories
+{
+  "problem": "问题",
+  "conditions": { "technologies": ["技术"], "version": "版本", "platform": "环境" },
+  "action": "实际执行过的操作",
+  "outcome": "实际结果",
+  "outcome_kind": "success",
+  "visibility": "developer_shared",
+  "request_public": false,
+  "tags": ["技术"],
+  "evidence": [{ "kind": "log", "value": "已脱敏的结果摘要" }]
+}
+```
+
+复用记忆后必须反馈，而不是只读取：
+
+```json
+POST /v1/memories/{memory_id}/feedback
+{ "verdict": "worked", "note": "适用条件或不适用原因", "evidence": "可选的脱敏证据" }
+```
+
+`verdict` 可用：`useful`、`not_useful`、`worked`、`partially_worked`、`failed`。新证据推翻或更新旧记忆时，在新记忆的 `relations` 中使用 `patches`、`contradicts`、`supersedes` 或 `expires`，不要修改旧记忆。
+
 ## 写入原则
 
 - 只提交真实尝试及其成功、失败、部分成功或未知结果。

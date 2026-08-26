@@ -397,6 +397,12 @@ struct RotatedAgentKeyOutput {
     warning: &'static str,
 }
 
+#[derive(Serialize)]
+struct RotatedWorkspaceInviteOutput {
+    workspace_invite_token: String,
+    warning: &'static str,
+}
+
 #[derive(Deserialize)]
 struct ClaimWorkspaceInput {
     claim_token: String,
@@ -646,6 +652,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/v1/workspaces/{id}/publication-policy",
             post(update_publication_policy),
+        )
+        .route(
+            "/v1/workspaces/{id}/invite/rotate",
+            post(rotate_workspace_invite),
         )
         .route("/v1/memories", post(create_memory))
         .route("/v1/memories/{id}", get(get_memory))
@@ -1114,10 +1124,12 @@ async fn remove_memory(
         .bind(id)
         .execute(&mut *transaction)
         .await?;
-    sqlx::query("DELETE FROM memory_relations WHERE source_memory_id = $1 OR target_memory_id = $1")
-        .bind(id)
-        .execute(&mut *transaction)
-        .await?;
+    sqlx::query(
+        "DELETE FROM memory_relations WHERE source_memory_id = $1 OR target_memory_id = $1",
+    )
+    .bind(id)
+    .execute(&mut *transaction)
+    .await?;
     sqlx::query("UPDATE memories SET problem = '[已移除]', conditions = '{}'::jsonb, action = '[已移除]', outcome = '[已移除]', tags = '{}', search_text = '', embedding = NULL, removed_at = now(), removed_reason = 'owner_request' WHERE id = $1")
         .bind(id).execute(&mut *transaction).await?;
     transaction.commit().await?;
@@ -1286,6 +1298,26 @@ async fn update_publication_policy(
     Ok(Json(
         json!({ "workspace_id": id, "publication_policy": input.publication_policy }),
     ))
+}
+
+async fn rotate_workspace_invite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<RotatedWorkspaceInviteOutput>> {
+    let developer = require_developer(&state, &headers).await?;
+    ensure_workspace_owner(&state.pool, id, developer.developer_id).await?;
+    let invite_token = security::new_token("af_invite");
+    sqlx::query("UPDATE workspaces SET invite_token_hash = $1 WHERE id = $2")
+        .bind(security::hash_token(&invite_token))
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    info!(workspace_id = %id, "workspace invite rotated");
+    Ok(Json(RotatedWorkspaceInviteOutput {
+        workspace_invite_token: invite_token,
+        warning: "旧邀请码已立即失效；新邀请码只展示一次，请交给需要加入工作区的 Agent",
+    }))
 }
 
 async fn optional_agent(
