@@ -36,6 +36,8 @@ const SEARCH_CANDIDATES: i64 = 20;
 const RRF_K: f64 = 60.0;
 const BREAKER_THRESHOLD: u32 = 3;
 const BREAKER_COOLDOWN_SECS: u64 = 30;
+// 与 migrations/0002 中 vector(1024) 列类型保持一致（bge-m3 输出 1024 维）
+const EMBEDDING_DIM: usize = 1024;
 
 #[derive(Clone)]
 struct AppState {
@@ -626,6 +628,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         limiter: Arc::new(RateLimiter::default()),
         embed_breaker: Arc::new(EmbeddingBreaker::default()),
     };
+    spawn_session_cleanup(state.pool.clone());
     let cors = CorsLayer::new()
         .allow_origin(config.app_origin)
         .allow_methods([Method::GET, Method::POST, Method::PUT])
@@ -683,6 +686,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+fn spawn_session_cleanup(pool: PgPool) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(6 * 60 * 60));
+        loop {
+            ticker.tick().await;
+            match sqlx::query(
+                "DELETE FROM developer_sessions \
+                 WHERE expires_at < now() - interval '7 days' \
+                    OR revoked_at < now() - interval '30 days'",
+            )
+            .execute(&pool)
+            .await
+            {
+                Ok(result) if result.rows_affected() > 0 => {
+                    info!(
+                        rows = result.rows_affected(),
+                        "cleaned up expired developer sessions"
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => warn!(error = %error, "session cleanup failed"),
+            }
+        }
+    });
 }
 
 async fn health(State(state): State<AppState>) -> ApiResult<Json<Value>> {
@@ -1130,6 +1159,10 @@ async fn remove_memory(
     .bind(id)
     .execute(&mut *transaction)
     .await?;
+    sqlx::query("DELETE FROM gap_memory_links WHERE memory_id = $1")
+        .bind(id)
+        .execute(&mut *transaction)
+        .await?;
     sqlx::query("UPDATE memories SET problem = '[已移除]', conditions = '{}'::jsonb, action = '[已移除]', outcome = '[已移除]', tags = '{}', search_text = '', embedding = NULL, removed_at = now(), removed_reason = 'owner_request' WHERE id = $1")
         .bind(id).execute(&mut *transaction).await?;
     transaction.commit().await?;
@@ -1155,6 +1188,13 @@ async fn create_feedback(
     let feedback_id = Uuid::new_v4();
     if let Some(developer) = developer {
         ensure_workspace_owner(&state.pool, memory.workspace_id, developer.developer_id).await?;
+        ensure_rate(
+            &state,
+            format!("feedback-dev:{}", developer.developer_id),
+            60,
+            Duration::from_secs(3600),
+        )
+        .await?;
         sqlx::query("INSERT INTO memory_feedback (id, memory_id, source_type, developer_id, verdict, note, evidence) VALUES ($1, $2, 'human', $3, $4, $5, $6)")
             .bind(feedback_id).bind(id).bind(developer.developer_id).bind(input.verdict.as_str())
             .bind(input.note.map(|value| value.trim().to_owned())).bind(input.evidence.map(|value| value.trim().to_owned()))
@@ -1650,8 +1690,10 @@ async fn embed(state: &AppState, input: &str) -> ApiResult<Option<String>> {
         .next()
         .map(|item| item.embedding)
         .unwrap_or_default();
-    if vector.is_empty() || vector.len() > 4096 || vector.iter().any(|item| !item.is_finite()) {
-        return Err(ApiError::internal("Embedding 向量无效"));
+    if vector.len() != EMBEDDING_DIM || vector.iter().any(|item| !item.is_finite()) {
+        return Err(ApiError::internal(format!(
+            "Embedding 向量维度应为 {EMBEDDING_DIM}"
+        )));
     }
     Ok(Some(format!(
         "[{}]",

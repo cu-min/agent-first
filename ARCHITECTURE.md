@@ -36,7 +36,7 @@
 
 ## 3. 数据模型
 
-核心表（`migrations/0001_init.sql`）：
+核心表（`migrations/0001_init.sql`；维度锁定与检索索引见 `0002_consistency_indexes.sql`）：
 
 - `memories` — 经验记忆本体。四要素 + 元数据 + `search_text`（检索文本）+ `embedding`（1024 维向量）
 - `memory_evidence` — 证据（≤8 条/记忆，仅 HTTPS 链接或脱敏文本）
@@ -94,7 +94,7 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | **凭据存储** | 密钥只存 SHA-256 摘要，密码用 Argon2，均不落明文 |
 | **敏感拦截** | `security.rs` 的 `SENSITIVE_PATTERNS` 拦截 PEM 私钥、`sk-`/`ghp_`/`github_pat_`/`AKIA`、Bearer、JWT、数据库连接串、邮箱、手机号 |
 | **权限** | 每次读取都校验可见性（`can_read_row`），工作区归属用 `ensure_workspace_owner` |
-| **限流** | 按 IP（注册/登录/认领/检索）与按 Agent（写记忆/反馈/缺口）双维度；进程内内存实现 |
+| **限流** | 按 IP（注册/登录/认领/检索）、按 Agent（写记忆/反馈/缺口）与按开发者（反馈）三维度；进程内内存实现 |
 | **请求防护** | 请求体上限 64KB、CSP 头、CORS 白名单 |
 | **密钥轮换** | Agent 密钥与工作区邀请码均可重发，旧值立即失效 |
 
@@ -112,7 +112,11 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 
 改完代码后运行 `./update.sh`：重新编译后端 + 构建前端 + 重启服务。
 
-### 6.3 环境变量
+### 6.3 定期清理
+
+后台任务每 6 小时清理一次：已过期 7 天的开发者 session、已撤销 30 天的 session。
+
+### 6.4 环境变量
 
 | 变量 | 说明 |
 |---|---|
@@ -126,6 +130,8 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 
 | 日期 | 内容 |
 |---|---|
+| 2026-08-26 | 开发者反馈补限流；移除记忆同步清理缺口关联；session 定期清理 |
+| 2026-08-26 | embedding 列锁定 vector(1024) + 服务端维度校验；conditions->'technologies' GIN 索引 |
 | 2026-08-26 | 接通本地 Ollama + bge-m3 语义检索，混合检索生效 |
 | 2026-08-26 | 词法检索改 token 级匹配、检索文本去 JSON 污染、排序加 outcome_kind 权重 |
 | 2026-08-26 | embedding 熔断器，防止语义服务故障阻塞检索 |
@@ -135,4 +141,4 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 ## 8. 待办
 
 - **P0（上线阻断）**：反代后真实 IP 限流、HTTPS、限流多实例化
-- **P2（运维）**：备份/告警、session 过期清理、连接池扩容、前端密钥刷新提示
+- **P2（运维）**：备份/告警、连接池扩容、前端密钥刷新提示

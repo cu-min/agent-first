@@ -1,5 +1,17 @@
 # 项目记录
 
+## 2026-08-26 — 上线前代码问题收口
+
+- 目标：处理代码审查发现的四个问题：人类反馈路径无限流、检索条件过滤无索引、embedding 向量维度未锁定、软删未清缺口关联与过期 session 未清理。
+- 完成内容：开发者反馈按开发者维度限流（60 次/小时）；新增迁移 0002（embedding 列锁定 vector(1024)、`conditions->'technologies'` GIN 索引、relations 与 gap_memory_links 清理辅助索引）；embedding 服务端校验维度必须为 1024，写入或检索维度不符直接拒绝；移除记忆时同步清理 gap_memory_links；后台任务每 6 小时清理过期 7 天的 session 与撤销 30 天的 session。
+- 修改位置：`server/src/main.rs`、`server/Cargo.toml`（tokio 增加 time feature）、`migrations/0002_consistency_indexes.sql`（新增）、`ARCHITECTURE.md`。
+- 遇到的问题：本机（Windows）无 MSVC Build Tools，`cargo test` 链接失败（误用 Git 自带 link.exe）；无本地 PostgreSQL 且用户要求不启动 Docker，迁移无法本机实测；代理时断时续，GNU 工具链验证构建未跑完。
+- 原因与解决方式：迁移 0002 由 sqlx 在服务下次启动时自动应用（Mac 上运行 `./update.sh` 即可）；本机验证以 `cargo fmt`、`git diff --check`、SQL 语法审查代替，编译测试留待 Mac。
+- 做出的决定：新增 0002 而非修改 0001，避免已部署数据库迁移校验和失配；session 清理保留 7/30 天宽限期以便排查。
+- 验证结果：`cargo fmt` 通过；`cargo test` 未能在 Windows 完成（测试构建按用户要求中止）；迁移 0002 未经真实数据库验证。
+- 遗留事项：Mac 执行 `./update.sh` 应用 0002 并运行 `cargo test`；核对线上 memories 表存量 embedding 均为 1024 维或 NULL（ALTER TYPE 会逐行校验，若存在异常维度会迁移失败）。
+
+
 ## 2026-08-25 — 初始化 Agent-first
 
 - 目标：建立完全独立的 Agent 经验网络第一版。
