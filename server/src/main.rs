@@ -5,7 +5,7 @@ use std::{
     env,
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
 };
 
@@ -34,6 +34,8 @@ use uuid::Uuid;
 
 const SEARCH_CANDIDATES: i64 = 20;
 const RRF_K: f64 = 60.0;
+const BREAKER_THRESHOLD: u32 = 3;
+const BREAKER_COOLDOWN_SECS: u64 = 30;
 
 #[derive(Clone)]
 struct AppState {
@@ -41,6 +43,7 @@ struct AppState {
     embeddings: Option<EmbeddingConfig>,
     http: Client,
     limiter: Arc<RateLimiter>,
+    embed_breaker: Arc<EmbeddingBreaker>,
 }
 
 #[derive(Clone)]
@@ -216,6 +219,45 @@ impl RateLimiter {
         }
         entry.count += 1;
         entry.count <= maximum
+    }
+}
+
+#[derive(Default)]
+struct EmbeddingBreaker {
+    inner: StdMutex<BreakerState>,
+}
+
+#[derive(Default)]
+struct BreakerState {
+    consecutive_failures: u32,
+    open_until: Option<Instant>,
+}
+
+impl EmbeddingBreaker {
+    fn allow(&self) -> bool {
+        let mut state = self.inner.lock().unwrap();
+        match state.open_until {
+            Some(until) if until > Instant::now() => false,
+            _ => {
+                state.open_until = None;
+                true
+            }
+        }
+    }
+
+    fn record_success(&self) {
+        let mut state = self.inner.lock().unwrap();
+        state.consecutive_failures = 0;
+        state.open_until = None;
+    }
+
+    fn record_failure(&self) {
+        let mut state = self.inner.lock().unwrap();
+        state.consecutive_failures += 1;
+        if state.consecutive_failures >= BREAKER_THRESHOLD {
+            state.open_until = Some(Instant::now() + Duration::from_secs(BREAKER_COOLDOWN_SECS));
+            state.consecutive_failures = 0;
+        }
     }
 }
 
@@ -576,6 +618,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         embeddings: config.embeddings,
         http: Client::builder().timeout(Duration::from_secs(3)).build()?,
         limiter: Arc::new(RateLimiter::default()),
+        embed_breaker: Arc::new(EmbeddingBreaker::default()),
     };
     let cors = CorsLayer::new()
         .allow_origin(config.app_origin)
@@ -889,8 +932,8 @@ async fn search(
         principal.as_ref(),
     )
     .await?;
-    let semantic = match embed(&state, &input.query).await {
-        Ok(Some(vector)) => {
+    let semantic = match embed_with_breaker(&state, &input.query).await {
+        Some(vector) => {
             semantic_candidates(
                 &state,
                 &vector,
@@ -901,11 +944,7 @@ async fn search(
             )
             .await?
         }
-        Ok(None) => Vec::new(),
-        Err(error) => {
-            warn!(error = %error.message, "embedding query failed; using lexical retrieval");
-            Vec::new()
-        }
+        None => Vec::new(),
     };
     let items =
         fetch_memory_summaries(&state.pool, &merge_ranks(&lexical, &semantic, limit)).await?;
@@ -1505,6 +1544,28 @@ async fn can_read_gap_with_optional(
     )
 }
 
+async fn embed_with_breaker(state: &AppState, input: &str) -> Option<String> {
+    if state.embeddings.is_none() {
+        return None;
+    }
+    if !state.embed_breaker.allow() {
+        warn!("embedding circuit open; skipping semantic retrieval");
+        return None;
+    }
+    match embed(state, input).await {
+        Ok(Some(vector)) => {
+            state.embed_breaker.record_success();
+            Some(vector)
+        }
+        Ok(None) => None,
+        Err(error) => {
+            warn!(error = %error.message, "embedding failed; recording breaker failure");
+            state.embed_breaker.record_failure();
+            None
+        }
+    }
+}
+
 async fn embed(state: &AppState, input: &str) -> ApiResult<Option<String>> {
     let Some(config) = &state.embeddings else {
         return Ok(None);
@@ -1637,5 +1698,27 @@ mod tests {
                 .allow("test-agent".to_owned(), 1, Duration::from_secs(60))
                 .await
         );
+    }
+
+    #[test]
+    fn circuit_breaker_opens_after_repeated_failures() {
+        let breaker = EmbeddingBreaker::default();
+        assert!(breaker.allow());
+        breaker.record_failure();
+        assert!(breaker.allow());
+        breaker.record_failure();
+        breaker.record_failure();
+        assert!(!breaker.allow());
+    }
+
+    #[test]
+    fn circuit_breaker_recovers_after_success() {
+        let breaker = EmbeddingBreaker::default();
+        for _ in 0..BREAKER_THRESHOLD {
+            breaker.record_failure();
+        }
+        assert!(!breaker.allow());
+        breaker.record_success();
+        assert!(breaker.allow());
     }
 }
