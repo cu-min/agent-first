@@ -541,6 +541,7 @@ struct MemoryDetail {
 
 #[derive(FromRow)]
 struct MemoryAccessRow {
+    id: Uuid,
     workspace_id: Uuid,
     author_agent_id: Uuid,
     visibility: String,
@@ -1114,6 +1115,10 @@ async fn remove_memory(
         .bind(id)
         .execute(&mut *transaction)
         .await?;
+    sqlx::query("DELETE FROM memory_relations WHERE source_memory_id = $1 OR target_memory_id = $1")
+        .bind(id)
+        .execute(&mut *transaction)
+        .await?;
     sqlx::query("UPDATE memories SET problem = '[已移除]', conditions = '{}'::jsonb, action = '[已移除]', outcome = '[已移除]', tags = '{}', search_text = '', embedding = NULL, removed_at = now(), removed_reason = 'owner_request' WHERE id = $1")
         .bind(id).execute(&mut *transaction).await?;
     transaction.commit().await?;
@@ -1214,12 +1219,25 @@ async fn get_gap(
     .into_iter()
     .map(|row| row.get("memory_id"))
     .collect();
-    let mut readable_ids = Vec::new();
-    for memory_id in ids {
-        if can_read_memory(&state.pool, memory_id, agent.as_ref()).await? {
-            readable_ids.push(memory_id);
-        }
-    }
+    let readable_ids: Vec<Uuid> = if ids.is_empty() {
+        Vec::new()
+    } else {
+        let rows = sqlx::query_as::<_, MemoryAccessRow>(
+            "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = ANY($1)",
+        )
+        .bind(&ids)
+        .fetch_all(&state.pool)
+        .await?;
+        let access: HashMap<Uuid, MemoryAccessRow> =
+            rows.into_iter().map(|row| (row.id, row)).collect();
+        ids.into_iter()
+            .filter(|memory_id| {
+                access
+                    .get(memory_id)
+                    .is_some_and(|row| can_read_row(row, agent.as_ref()))
+            })
+            .collect()
+    };
     let memories = fetch_memory_summaries(&state.pool, &readable_ids).await?;
     Ok(Json(GapDetail {
         gap,
@@ -1458,12 +1476,26 @@ async fn fetch_memory_summaries(pool: &PgPool, ids: &[Uuid]) -> ApiResult<Vec<Me
 
 async fn load_memory_access(pool: &PgPool, id: Uuid) -> ApiResult<MemoryAccessRow> {
     sqlx::query_as::<_, MemoryAccessRow>(
-        "SELECT workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = $1",
+        "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| ApiError::not_found("记忆不存在"))
+}
+
+fn can_read_row(row: &MemoryAccessRow, agent: Option<&AgentPrincipal>) -> bool {
+    if row.removed_at.is_some() {
+        return false;
+    }
+    if row.visibility == "public" {
+        return true;
+    }
+    let Some(agent) = agent else {
+        return false;
+    };
+    (row.visibility == "developer_shared" && row.workspace_id == agent.workspace_id)
+        || (row.visibility == "agent_private" && row.author_agent_id == agent.agent_id)
 }
 
 async fn can_read_memory(
@@ -1472,7 +1504,7 @@ async fn can_read_memory(
     agent: Option<&AgentPrincipal>,
 ) -> ApiResult<bool> {
     let Some(row) = sqlx::query_as::<_, MemoryAccessRow>(
-        "SELECT workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = $1",
+        "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -1480,19 +1512,7 @@ async fn can_read_memory(
     else {
         return Ok(false);
     };
-    if row.removed_at.is_some() {
-        return Ok(false);
-    }
-    if row.visibility == "public" {
-        return Ok(true);
-    }
-    let Some(agent) = agent else {
-        return Ok(false);
-    };
-    Ok(
-        (row.visibility == "developer_shared" && row.workspace_id == agent.workspace_id)
-            || (row.visibility == "agent_private" && row.author_agent_id == agent.agent_id),
-    )
+    Ok(can_read_row(&row, agent))
 }
 
 async fn ensure_workspace_owner(
