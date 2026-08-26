@@ -606,7 +606,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("agent_first=info".parse()?),
         )
-        .without_time()
         .init();
     let config = AppConfig::from_env()?;
     let pool = PgPoolOptions::new()
