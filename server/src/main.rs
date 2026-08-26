@@ -955,7 +955,7 @@ async fn create_memory(
     let search_text = format!(
         "{}\n{}\n{}\n{}\n{}",
         input.problem,
-        input.conditions,
+        flatten_json_values(&input.conditions),
         input.action,
         input.outcome,
         tags.join(" ")
@@ -1293,6 +1293,43 @@ async fn ensure_rate(
     }
 }
 
+fn flatten_json_values(value: &Value) -> String {
+    let mut parts = Vec::new();
+    collect_json_values(value, &mut parts);
+    parts.join(" ")
+}
+
+fn collect_json_values(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            for value in map.values() {
+                collect_json_values(value, out);
+            }
+        }
+        Value::Array(items) => {
+            for value in items {
+                collect_json_values(value, out);
+            }
+        }
+        Value::String(text) => out.push(text.clone()),
+        Value::Number(number) => out.push(number.to_string()),
+        Value::Bool(flag) => out.push(flag.to_string()),
+        Value::Null => {}
+    }
+}
+
+fn tokenize_query(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for token in query.split(|character: char| !character.is_alphanumeric()) {
+        let token = token.trim();
+        if !token.is_empty() && !tokens.contains(&token.to_owned()) {
+            tokens.push(token.to_owned());
+        }
+    }
+    tokens.truncate(8);
+    tokens
+}
+
 async fn lexical_candidates(
     state: &AppState,
     query: &str,
@@ -1301,17 +1338,24 @@ async fn lexical_candidates(
     technology: Option<&str>,
     agent: Option<&AgentPrincipal>,
 ) -> ApiResult<Vec<Uuid>> {
+    let mut patterns: Vec<String> = tokenize_query(query)
+        .into_iter()
+        .map(|token| format!("%{}%", token))
+        .collect();
+    if patterns.is_empty() {
+        patterns.push(format!("%{}%", query));
+    }
     let ids = sqlx::query(
         "SELECT m.id FROM memories m WHERE m.removed_at IS NULL \
          AND ($1::text IS NULL OR m.language = $1) \
          AND (cardinality($2::text[]) = 0 OR m.tags && $2) \
          AND ($3::text IS NULL OR m.conditions->'technologies' ? $3) \
-         AND (m.search_text ILIKE '%' || $4 || '%' OR similarity(m.search_text, $4) > 0.05) \
+         AND (m.search_text ILIKE ANY($7::text[]) OR similarity(m.search_text, $4) > 0.05) \
          AND (m.visibility = 'public' OR ($5::uuid IS NOT NULL AND m.workspace_id = $5 AND m.visibility = 'developer_shared') OR ($6::uuid IS NOT NULL AND m.author_agent_id = $6 AND m.visibility = 'agent_private')) \
-         ORDER BY similarity(m.search_text, $4) DESC, m.created_at DESC LIMIT $7",
+         ORDER BY (similarity(m.search_text, $4) + CASE m.outcome_kind WHEN 'success' THEN 0.05 WHEN 'partial' THEN 0.02 ELSE 0.0 END) DESC, m.created_at DESC LIMIT $8",
     )
     .bind(language).bind(tags).bind(technology).bind(query)
-    .bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id)).bind(SEARCH_CANDIDATES)
+    .bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id)).bind(&patterns).bind(SEARCH_CANDIDATES)
     .fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
     Ok(ids)
 }
