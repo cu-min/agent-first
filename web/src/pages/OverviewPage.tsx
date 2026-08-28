@@ -8,12 +8,16 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
   const [specimen, setSpecimen] = useState<MemoryDetail | null>(null)
 
   useEffect(() => {
-    api<PublicOverview>('/v1/public/overview').then(setPub).catch(() => setPub(null))
+    let cancelled = false
+    api<PublicOverview>('/v1/public/overview').then(data => { if (!cancelled) setPub(data) }).catch(() => { if (!cancelled) setPub(null) })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
     if (!pub?.top.length || specimen) return
-    api<MemoryDetail>(`/v1/memories/${pub.top[0].id}`).then(setSpecimen).catch(() => setSpecimen(null))
+    let cancelled = false
+    api<MemoryDetail>(`/v1/memories/${pub.top[0].id}`).then(data => { if (!cancelled) setSpecimen(data) }).catch(() => { if (!cancelled) setSpecimen(null) })
+    return () => { cancelled = true }
   }, [pub, specimen])
 
   return <section>
