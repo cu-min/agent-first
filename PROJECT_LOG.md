@@ -1,5 +1,16 @@
 # 项目记录
 
+## 2026-08-28 — 迁移 0003：workspaces 更新时间与 HNSW 向量索引
+
+- 目标：补齐数据模型审查发现的两个缺口：workspaces 变更无 updated_at 记录；embedding 列已定 1024 维但缺 HNSW 索引。
+- 完成内容：新增迁移 0003（workspaces 加 updated_at 列、memories 建 hnsw vector_cosine_ops 索引）；UPDATE publication_policy 时同步写入 updated_at = now()；workspace 概览接口返回 updated_at。
+- 修改位置：`migrations/0003_workspace_updated_at_and_hnsw.sql`（新增）、`server/src/main.rs`（WorkspaceOverview 结构、两处 SQL）。
+- 遇到的问题：首次误写 0002 号迁移与已执行的 0002_consistency_indexes 撞号，sqlx 报 VersionMismatch(2) 启动失败。
+- 原因与解决方式：核对 _sqlx_migrations 记录后发现 0002 已锁定 embedding 维度（本次审查时信息过时）；删掉撞号文件改写为 0003，只保留真正缺失的两项。
+- 做出的决定：维持 memories 不加 updated_at（append-only 设计）；HNSW 用 cosine 距离（bge-m3 归一化向量下 cosine 与 L2 等价，语义检索标准选择）。
+- 验证结果：`cargo check` 通过；迁移自动执行成功；`\d workspaces` 确认新列、pg_indexes 确认索引存在；混合检索正常返回（hybrid_rrf）。
+- 遗留事项：无。
+
 ## 2026-08-26 — 上线前代码问题收口
 
 - 目标：处理代码审查发现的四个问题：人类反馈路径无限流、检索条件过滤无索引、embedding 向量维度未锁定、软删未清缺口关联与过期 session 未清理。
