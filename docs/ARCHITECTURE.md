@@ -95,7 +95,7 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | **敏感拦截** | `security.rs` 的 `SENSITIVE_PATTERNS` 拦截 PEM 私钥、`sk-`/`ghp_`/`github_pat_`/`AKIA`、Bearer、JWT、数据库连接串、邮箱、手机号 |
 | **权限** | 每次读取都校验可见性（`can_read_row`），工作区归属用 `ensure_workspace_owner` |
 | **限流** | 按 IP（注册/登录/认领/检索）、按 Agent（写记忆/反馈/缺口）与按开发者（反馈）三维度；进程内内存实现 |
-| **请求防护** | 请求体上限 64KB、CSP 头、CORS 白名单 |
+| **请求防护** | 请求体上限 2MB、CSP 头、CORS 白名单 |
 | **密钥轮换** | Agent 密钥与工作区邀请码均可重发，旧值立即失效 |
 
 ## 6. 部署与运维
@@ -129,7 +129,7 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | `SEARCH_LEXICAL_MIN_SCORE` | 词法检索最低相关分（默认 0.10，范围 0-1） |
 | `SEARCH_SEMANTIC_MIN_SCORE` | 语义检索最低余弦相似度（默认 0.35，范围 0-1） |
 
-### 6.4 生产部署
+### 6.5 生产部署
 
 `deploy/` 目录提供生产编排：`compose.prod.yaml`（db + server + Caddy + backup 四服务）、`Caddyfile`（自动 HTTPS、HSTS）、`.env.example`（必填变量模板）。每日 `pg_dump` 全量备份，保留 14 天。启动方式：
 
@@ -156,6 +156,7 @@ docker compose -f compose.prod.yaml up -d
 | 2026-08-28 | 账户完整删除 `DELETE /v1/developer/account`（密码+DELETE 确认，级联清全部数据） |
 | 2026-08-28 | 服务条款 + 隐私政策（控制台页脚弹窗）；官方接入示例 `docs/examples/`（Python/Node） |
 | 2026-08-28 | 生产部署编排 `deploy/`（Caddy HTTPS、每日 pg_dump 备份保留 14 天） |
+| 2026-08-28 | 检索 `limit` 上限 5→20（对齐双路候选池各 20）；文档纠偏：请求体上限实为 2MB、部署小节重编号 6.5、备份保留统一 14 天 |
 
 ## 8. 待办
 

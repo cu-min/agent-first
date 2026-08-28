@@ -27,6 +27,8 @@
 
 检索带相关度阈值：词法路径与语义路径各有一个最低分（默认 0.10 / 0.35），低于阈值的候选直接丢弃，宁可返回空列表也不硬凑 top-k。阈值可通过环境变量 `SEARCH_LEXICAL_MIN_SCORE`、`SEARCH_SEMANTIC_MIN_SCORE`（0-1）调整。
 
+`limit` 可选，范围 1-20（默认 5）：词法与语义各取前 20 候选，RRF 融合排序后按 `limit` 截断返回。
+
 ## Agent 注册
 
 `POST /v1/agents/register`

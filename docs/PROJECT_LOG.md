@@ -1,5 +1,18 @@
 # 项目记录
 
+## 2026-08-28 — 上线前收尾修复：检索上限、文档纠偏、管线默认值
+
+- 目标：处理全面审查遗留的非数据类问题（604 条数据清理另线并行处理）。
+- 完成内容：
+  - 检索 `limit` clamp 5→20（`main.rs` search handler），与双路候选池 `SEARCH_CANDIDATES=20` 对齐；前端经验库搜索已在传 `limit:10`，此前被 clamp 静默压到 5。
+  - 文档纠偏：ARCHITECTURE.md 请求体上限 64KB→2MB（代码为 `RequestBodyLimitLayer::new(2MB)`，批量导入 100 条/次的现实需求）；ARCHITECTURE.md 部署小节 6.4 重复编号改 6.5；本日志早前条目"备份保留 7 天"笔误统一为 14 天（compose 实际 `-mtime +14`，从未是 7）；API.md 补 `limit` 参数范围说明。
+  - `seeds/pipeline.py` 默认蒸馏模式 `llm`→`builtin`（对齐 STANDARDS.md 5.3：对话内蒸馏优先，API 仅后备）。
+  - 删除根目录 `$dest/`（PE 解包垃圾，含 274MB `[0]` 文件，gitignored）。
+  - 复核"密码规则仅前端校验"：不成立——claim 端点有 `security::validate_password`（8-256 位字母+数字）且带单元测试，无独立改密端点（改密走 claim 流程）。
+- 修改位置：`server/src/main.rs`、`docs/ARCHITECTURE.md`、`docs/API.md`、`docs/PROJECT_LOG.md`、`seeds/pipeline.py`。
+- 做出的决定：上限取 20 与候选池一致（RRF 合并前双路各取 20，超过 20 无意义）；请求体上限改文档不改代码（2MB 是批量导入的现实需求）。
+- 验证结果：`cargo check` / `cargo test`（6 项通过）；debug 构建重启后 `/healthz` ok；同一查询 `limit=20` 返回 20 条 / `limit=5` 返回 5 条 / `limit=100` 压到 20（`retrieval=hybrid_rrf`），clamp 放开实际生效。
+
 ## 2026-08-28 — 清理 604 条废弃合成数据，恢复 22 条真实种子，修复 embedding 失效
 
 - 目标：按 STANDARDS.md 第 5 节铁律清除已废弃的 AI 合成数据，恢复 22 条真实种子并让语义检索真正生效。
@@ -29,7 +42,7 @@
 - 原因与解决方式：项目自带 `server/.cargo/config.toml`（GNU 目标 + rust-lld 链接器），须在 server 目录内执行 cargo；字体依赖移入 `web/package.json` 重装，删除根目录误装产物。
 - 做出的决定：hash 路由而非 history 路由（不引入依赖、不改服务器配置）；详情弹层挂在路由上（`#/页面/memory/{id}`）而非组件内部状态，实现深链分享。
 - 验证结果：cargo check / tsc / vite build 零错误；本地起服实测匿名搜索、带身份搜索（私有记忆可检索）、visibility 三档列表过滤、详情、反馈五条链路全部通过；测试账号与数据已清理（公开统计 501 条不变）。
-- 遗留事项：search 的 `limit` 上限仍是 5（后端 clamp）；604 条种子数据已在 `seeds/seed_memories.json` 待灌库。
+- 遗留事项：~~search 的 `limit` 上限仍是 5（后端 clamp）~~（同日已修复，上限 20）；604 条种子数据已在 `seeds/seed_memories.json` 待灌库。
 
 ## 2026-08-28 — 种子数据管线与数据来源铁律
 
@@ -178,7 +191,7 @@
 
 - 目标：按优先级清理 P0/P1 问题——部署安全、限流正确性、数据权利、检索质量、开发者冷启动。
 - 完成内容：
-  - 生产部署：`deploy/` 新增 Caddy 自动 HTTPS（HSTS、nosniff、隐藏 Server 头）与每日 `pg_dump` 备份服务（保留 7 天）。
+  - 生产部署：`deploy/` 新增 Caddy 自动 HTTPS（HSTS、nosniff、隐藏 Server 头）与每日 `pg_dump` 备份服务（保留 14 天）。
   - 真实 IP：服务端新增可信代理网段解析 `X-Forwarded-For`，注册/登录/认领/检索的限流键改为真实客户端 IP；`TRUSTED_PROXIES` 未配置时保持直连行为。
   - 账户删除：`DELETE /v1/developer/account`（密码确认），事务内级联清理反馈→关联→证据→记忆→Agent→工作区→开发者。
   - 检索阈值：`SEARCH_LEXICAL_MIN_SCORE`（默认 0.10）/`SEARCH_SEMANTIC_MIN_SCORE`（默认 0.35），低于阈值的候选不返回，避免无关结果塞满 Agent 上下文。

@@ -1190,7 +1190,7 @@ async fn search(
     let tags = security::normalize_tags(input.tags).map_err(ApiError::bad_request)?;
     let language = normalize_optional(&input.language, "语言", 20)?;
     let technology = normalize_optional(&input.technology, "技术", 80)?;
-    let limit = input.limit.unwrap_or(5).clamp(1, 5) as usize;
+    let limit = input.limit.unwrap_or(5).clamp(1, 20) as usize;
     let principal = resolve_read_principal(&state, &headers).await?;
     let lexical = lexical_candidates(
         &state,

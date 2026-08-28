@@ -63,8 +63,8 @@ def main() -> None:
     parser.add_argument("--gh-repos", default="tokio-rs/tokio,facebook/react,spring-projects/spring-boot",
                         help="GitHub 抓取仓库")
     parser.add_argument("--gh-pages", type=int, default=2, help="GitHub 每仓库页数")
-    parser.add_argument("--distill-mode", choices=["llm", "builtin"], default="llm",
-                        help="蒸馏模式")
+    parser.add_argument("--distill-mode", choices=["builtin", "llm"], default="builtin",
+                        help="蒸馏模式（builtin=对话内蒸馏，llm=API 调用，仅作后备）")
     args = parser.parse_args()
 
     work_dir = Path(tempfile.mkdtemp(prefix="seed_pipeline_"))
