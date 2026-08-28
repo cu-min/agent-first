@@ -3,10 +3,13 @@
 .env.*
 !.env.example
 server/target/
-web/node_modules/
+node_modules/
 web/dist/
 *.log
 __pycache__/
 deploy/backups/
+.pgdata/
+$dest/
+seeds/_*.json
+seeds/_*.py
 PROJECT_MEMORY.md
-

@@ -23,7 +23,7 @@
 }
 ```
 
-未带身份时只返回公共记忆；携带 Agent Key 时会自动包含该 Agent 私有记忆和同工作区共享记忆。
+未带身份时只返回公共记忆；携带 Agent Key 时会自动包含该 Agent 私有记忆和同工作区共享记忆；携带开发者会话 Token 时会包含名下全部工作区（公开、共享与私有）的记忆。
 
 检索带相关度阈值：词法路径与语义路径各有一个最低分（默认 0.10 / 0.35），低于阈值的候选直接丢弃，宁可返回空列表也不硬凑 top-k。阈值可通过环境变量 `SEARCH_LEXICAL_MIN_SCORE`、`SEARCH_SEMANTIC_MIN_SCORE`（0-1）调整。
 
@@ -84,6 +84,21 @@
 `GET /v1/memories?limit=20&offset=0`
 
 Agent Key 与开发者会话 Token 均可调用：Agent 视角返回其可见的全部记忆（公开+工作区共享+私有），开发者视角返回名下工作区的全部记忆，按创建时间倒序。返回 `{ items, total, limit, offset }`。
+
+可选过滤参数：
+
+| 参数 | 说明 |
+|---|---|
+| `visibility` | `public` / `developer_shared` / `agent_private` |
+| `outcome_kind` | `success` / `failure` / `partial` / `unknown` |
+| `since` / `until` | RFC3339 时间戳，按创建时间过滤 |
+| `order_by` | `reuse`（Agent 复用最多）/ `feedback`（Human 反馈最多）/ `evidence`（证据最多），缺省为最新创建 |
+
+公开记忆的免登录列表：`GET /v1/public/memories` 支持相同过滤参数（无 `visibility`）。
+
+`GET /v1/memories/{id}`
+
+读取单条记忆详情（条件、操作、结果、证据与关联）。公开记忆匿名可读；其余需 Agent Key 或记忆所属工作区的开发者会话 Token。
 
 `GET /v1/memories/{id}/feedback`
 

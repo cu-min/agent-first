@@ -1,5 +1,43 @@
 # 项目记录
 
+## 2026-08-28 — 前端全面审查与重构：检索身份、路由、可访问性
+
+- 目标：统一审查前端与检索链路，修复审查发现的问题，并做 UI 打磨。
+- 完成内容：
+  - **后端**：新增 `ReadPrincipal` 双身份解析（Agent Key / 开发者会话 Token / 匿名），`/v1/search`、`/v1/memories/{id}`、`/v1/memories/{id}/feedback` 均可携带开发者 Token——修复"登录控制台后，前端搜索与详情始终走匿名链路，看不到工作区记忆"的断层。词法/语义候选查询的可见性过滤改为工作区数组（ANY），开发者可见名下全部工作区。
+  - **前端逻辑修复**：经验库三个 tab（公开/工作区共享/Agent 私有）真正传递 `visibility` 参数（此前三个 tab 返回相同数据）；搜索请求带身份头；搜索请求序号防竞态（防抖过期响应覆盖新结果）。
+  - **前端重构**：单文件 App.tsx（479 行）拆分为 `lib/api.ts`、`lib/router.ts`、`components/ui.tsx` + 三个页面 + 详情弹层；引入零依赖 hash 路由（`#/library`、`#/memory/{id}` 可刷新、可分享、前进后退可用）。
+  - **可访问性**：`window.confirm` 全部替换为风格统一的自定义确认弹层；弹层统一 Esc 关闭、焦点恢复、`aria-modal`；Toast 容器 `aria-live`。
+  - **打磨**：三处骨架屏（卡片/详情/标本）、语言字段本地化（zh→中文）、前端密码字母+数字校验、SVG favicon、页面转场/骨架微光/徽章脉冲动效（含 prefers-reduced-motion 降级）。
+  - **字体自托管**：@fontsource 替代 Google Fonts CDN（视觉不变，按 unicode-range 分包，国内访问可靠）；样式清理：15+ 处 `!important` 清零、两套弹层样式合并、死代码删除。
+- 修改位置：`server/src/main.rs`（ReadPrincipal 及三个接口）、`web/src/` 全目录重构、`web/index.html`、`web/public/favicon.svg`、`docs/API.md`（鉴权语义与过滤参数文档化）。
+- 遇到的问题：本机 MSVC 链接器缺失导致 cargo check 失败；npm 字体包误装到仓库根目录（web 构建靠 Node 向上解析侥幸通过）。
+- 原因与解决方式：项目自带 `server/.cargo/config.toml`（GNU 目标 + rust-lld 链接器），须在 server 目录内执行 cargo；字体依赖移入 `web/package.json` 重装，删除根目录误装产物。
+- 做出的决定：hash 路由而非 history 路由（不引入依赖、不改服务器配置）；详情弹层挂在路由上（`#/页面/memory/{id}`）而非组件内部状态，实现深链分享。
+- 验证结果：cargo check / tsc / vite build 零错误；本地起服实测匿名搜索、带身份搜索（私有记忆可检索）、visibility 三档列表过滤、详情、反馈五条链路全部通过；测试账号与数据已清理（公开统计 501 条不变）。
+- 遗留事项：search 的 `limit` 上限仍是 5（后端 clamp）；604 条种子数据已在 `seeds/seed_memories.json` 待灌库。
+
+## 2026-08-28 — 种子数据管线与数据来源铁律
+
+- 目标：建立可溯源的种子数据生产管线，并将来源铁律固化到 STANDARDS.md。
+- 完成内容：`seeds/STANDARDS.md` 新增第 5 节"数据来源铁律"（合法来源五类 + 绝对禁止自编/自我总结 + 蒸馏只做格式变换不新增推断 + LLM 盲测机制）；生产管线脚本入库（`fetch_so.py` / `fetch_github.py` / `distill.py` / `filter.py` / `pipeline.py` / `blind_test.py`）；604 条种子数据合并在 `seeds/seed_memories.json`。
+- 修改位置：`seeds/STANDARDS.md`、`seeds/*.py`、`seeds/seed_memories.json`、`.gitignore`（排除 `seeds/_*.json`、`seeds/_*.py` 工作产物）。
+- 遇到的问题：批次生成时括号缺失导致部分条目格式损坏，需重跑合并。
+- 做出的决定：中间产物（`_answers_*`、`_raw_*`、`_debug_*` 等）不入库，gitignore 排除。
+- 遗留事项：604 条数据尚未灌库；灌库后需跑盲测与人工抽检。
+
+## 2026-08-28 — Embedding 模型锁定与成本估算
+
+- 目标：确定语义检索的唯一模型与语言存储策略，评估规模化后的模型调用成本。
+- 完成内容：确认 Embedding 模型锁定为智谱 **Embedding-3 / 1024 维**（多语言，中英统一向量空间）；存储按原始语言不翻译，初始化中文为主（240 条）+英文（60 条）为辅；`server/src/main.rs` 请求体显式传 `dimensions=1024` 与数据库 `vector(1024)` 对齐；`.env` 锁定智谱 endpoint/model。
+- 修改位置：`server/src/main.rs`（em、`.env`、`seeds/STANDARDS.md`（新增第 6 节不可变约束）。
+- 遇到的问题：本地量化包（Ollama 等）不同量化档权重配比不一致，相同文本向量会偏移，混用会导致检索空间错乱。
+- 原因与解决方式：统一走云端智谱 API（部署一致、无本地量化差异），并在 STANDARDS 登记"换模型/量化档/维度为破坏性变更，需先评估全量重向量化成本"。
+- 成本估算（官方 0.5 元/百万 token，Embedding-3）：存 1 万条一次性≈1.5 元可忽略；每日写入 2 万条（×~300 token）≈3 元/天、查询 10 万次（×~80 token）≈4 元/天，合计约 **7 元/天、~210 元/月**；区间取决于每条/每次 token，保守~105 元/月，偏高~375 元/月。
+- 做出的决定：查询只对 query 向量化一次（库内文档已预向量化，不重复计费），纯 embedding 成本；推理侧 LLM token 成本另算。
+- 验证结果：官方定价已核实（0.5 元/百万 token）。
+- 遗留事项：待种子批次修复后合并生成 300 条 seed_memories.json 并灌库。
+
 ## 2026-08-28 — 迁移 0003：workspaces 更新时间与 HNSW 向量索引
 
 - 目标：补齐数据模型审查发现的两个缺口：workspaces 变更无 updated_at 记录；embedding 列已定 1024 维但缺 HNSW 索引。

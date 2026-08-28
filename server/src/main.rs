@@ -729,7 +729,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         pool,
         embeddings: config.embeddings,
-        http: Client::builder().timeout(Duration::from_secs(3)).build()?,
+        http: Client::builder().timeout(Duration::from_secs(3)).no_proxy().build()?,
         limiter: Arc::new(RateLimiter::default()),
         embed_breaker: Arc::new(EmbeddingBreaker::default()),
         trusted_proxies: config.trusted_proxies,
@@ -1191,14 +1191,14 @@ async fn search(
     let language = normalize_optional(&input.language, "语言", 20)?;
     let technology = normalize_optional(&input.technology, "技术", 80)?;
     let limit = input.limit.unwrap_or(5).clamp(1, 5) as usize;
-    let principal = optional_agent(&state, &headers).await?;
+    let principal = resolve_read_principal(&state, &headers).await?;
     let lexical = lexical_candidates(
         &state,
         &input.query,
         language.as_deref(),
         &tags,
         technology.as_deref(),
-        principal.as_ref(),
+        &principal,
     )
     .await?;
     let semantic = match embed_with_breaker(&state, &input.query).await {
@@ -1209,7 +1209,7 @@ async fn search(
                 language.as_deref(),
                 &tags,
                 technology.as_deref(),
-                principal.as_ref(),
+                &principal,
             )
             .await?
         }
@@ -1454,6 +1454,53 @@ async fn resolve_list_principal(state: &AppState, headers: &HeaderMap) -> ApiRes
         return Ok(ListPrincipal::Developer(developer));
     }
     Err(ApiError::unauthorized())
+}
+
+enum ReadPrincipal {
+    Agent(AgentPrincipal),
+    Developer { workspaces: Vec<Uuid> },
+    Anonymous,
+}
+
+async fn resolve_read_principal(state: &AppState, headers: &HeaderMap) -> ApiResult<ReadPrincipal> {
+    let Some(token) = optional_bearer_token(headers)? else {
+        return Ok(ReadPrincipal::Anonymous);
+    };
+    let token_hash = security::hash_token(token);
+    if let Some(agent) = sqlx::query_as::<_, AgentPrincipal>(
+        "SELECT a.id AS agent_id, a.workspace_id, w.developer_id, w.publication_policy \
+         FROM agent_keys k JOIN agents a ON a.id = k.agent_id JOIN workspaces w ON w.id = a.workspace_id \
+         WHERE k.key_hash = $1 AND k.revoked_at IS NULL AND a.revoked_at IS NULL",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.pool)
+    .await?
+    {
+        return Ok(ReadPrincipal::Agent(agent));
+    }
+    if let Some(developer) = sqlx::query_as::<_, DeveloperPrincipal>(
+        "SELECT d.id AS developer_id FROM developer_sessions s JOIN developers d ON d.id = s.developer_id \
+         WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.pool)
+    .await?
+    {
+        let workspaces = sqlx::query_scalar::<_, Uuid>("SELECT id FROM workspaces WHERE developer_id = $1")
+            .bind(developer.developer_id)
+            .fetch_all(&state.pool)
+            .await?;
+        return Ok(ReadPrincipal::Developer { workspaces });
+    }
+    Err(ApiError::unauthorized())
+}
+
+fn read_scope(principal: &ReadPrincipal) -> (Vec<Uuid>, Vec<Uuid>, Option<Uuid>) {
+    match principal {
+        ReadPrincipal::Agent(agent) => (vec![agent.workspace_id], Vec::new(), Some(agent.agent_id)),
+        ReadPrincipal::Developer { workspaces } => (Vec::new(), workspaces.clone(), None),
+        ReadPrincipal::Anonymous => (Vec::new(), Vec::new(), None),
+    }
 }
 
 async fn list_memories(
@@ -1705,33 +1752,8 @@ async fn list_memory_feedback(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<FeedbackRecord>>> {
     let memory = load_memory_access(&state.pool, id).await?;
-    let agent = optional_agent(&state, &headers).await.ok().flatten();
-    let authorized = match agent {
-        Some(agent) => can_read_row(&memory, Some(&agent)),
-        None => match optional_bearer_token(&headers)? {
-            Some(token) => {
-                let developer = sqlx::query_as::<_, DeveloperPrincipal>(
-                    "SELECT d.id AS developer_id FROM developer_sessions s JOIN developers d ON d.id = s.developer_id \
-                     WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
-                )
-                .bind(security::hash_token(token))
-                .fetch_optional(&state.pool)
-                .await?;
-                match developer {
-                    Some(developer) => ensure_workspace_owner(
-                        &state.pool,
-                        memory.workspace_id,
-                        developer.developer_id,
-                    )
-                    .await
-                    .is_ok(),
-                    None => false,
-                }
-            }
-            None => false,
-        },
-    };
-    if !authorized {
+    let principal = resolve_read_principal(&state, &headers).await?;
+    if !can_read_row_principal(&memory, &principal) {
         return Err(ApiError::not_found("记忆不存在或不可访问"));
     }
     let rows = sqlx::query_as::<_, FeedbackRecord>(
@@ -1748,8 +1770,8 @@ async fn get_memory(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<MemoryDetail>> {
-    let agent = optional_agent(&state, &headers).await?;
-    if !can_read_memory(&state.pool, id, agent.as_ref()).await? {
+    let principal = resolve_read_principal(&state, &headers).await?;
+    if !can_read_memory_principal(&state.pool, id, &principal).await? {
         return Err(ApiError::not_found("记忆不存在或不可访问"));
     }
     let memory = fetch_memory_summaries(&state.pool, &[id])
@@ -2115,7 +2137,7 @@ async fn lexical_candidates(
     language: Option<&str>,
     tags: &[String],
     technology: Option<&str>,
-    agent: Option<&AgentPrincipal>,
+    principal: &ReadPrincipal,
 ) -> ApiResult<Vec<(Uuid, f64)>> {
     let mut patterns: Vec<String> = tokenize_query(query)
         .into_iter()
@@ -2124,22 +2146,26 @@ async fn lexical_candidates(
     if patterns.is_empty() {
         patterns.push(format!("%{}%", query));
     }
+    let (shared_workspaces, full_workspaces, agent_id) = read_scope(principal);
     let rows = sqlx::query(
         "SELECT m.id, \
          GREATEST(similarity(m.search_text, $4), \
-           (SELECT count(*) FROM unnest($7::text[]) AS p(pattern) WHERE m.search_text ILIKE p.pattern)::float8 \
-           / cardinality($7::text[])) \
+           (SELECT count(*) FROM unnest($8::text[]) AS p(pattern) WHERE m.search_text ILIKE p.pattern)::float8 \
+           / cardinality($8::text[])) \
          + CASE m.outcome_kind WHEN 'success' THEN 0.05 WHEN 'partial' THEN 0.02 ELSE 0.0 END::float8 AS score \
          FROM memories m WHERE m.removed_at IS NULL \
          AND ($1::text IS NULL OR m.language = $1) \
          AND (cardinality($2::text[]) = 0 OR m.tags && $2) \
          AND ($3::text IS NULL OR m.conditions->'technologies' ? $3) \
-         AND (m.search_text ILIKE ANY($7::text[]) OR similarity(m.search_text, $4) > 0.05) \
-         AND (m.visibility = 'public' OR ($5::uuid IS NOT NULL AND m.workspace_id = $5 AND m.visibility = 'developer_shared') OR ($6::uuid IS NOT NULL AND m.author_agent_id = $6 AND m.visibility = 'agent_private')) \
-         ORDER BY score DESC, m.created_at DESC LIMIT $8",
+         AND (m.search_text ILIKE ANY($8::text[]) OR similarity(m.search_text, $4) > 0.05) \
+         AND (m.visibility = 'public' \
+           OR (cardinality($5::uuid[]) > 0 AND m.workspace_id = ANY($5::uuid[]) AND m.visibility = 'developer_shared') \
+           OR (cardinality($6::uuid[]) > 0 AND m.workspace_id = ANY($6::uuid[])) \
+           OR ($7::uuid IS NOT NULL AND m.author_agent_id = $7 AND m.visibility = 'agent_private')) \
+         ORDER BY score DESC, m.created_at DESC LIMIT $9",
     )
     .bind(language).bind(tags).bind(technology).bind(query)
-    .bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id)).bind(&patterns).bind(SEARCH_CANDIDATES)
+    .bind(&shared_workspaces).bind(&full_workspaces).bind(agent_id).bind(&patterns).bind(SEARCH_CANDIDATES)
     .fetch_all(&state.pool).await?;
     let minimum = state.thresholds.lexical_min;
     Ok(rows
@@ -2155,17 +2181,21 @@ async fn semantic_candidates(
     language: Option<&str>,
     tags: &[String],
     technology: Option<&str>,
-    agent: Option<&AgentPrincipal>,
+    principal: &ReadPrincipal,
 ) -> ApiResult<Vec<(Uuid, f64)>> {
+    let (shared_workspaces, full_workspaces, agent_id) = read_scope(principal);
     let rows = sqlx::query(
-        "SELECT m.id, 1 - (m.embedding <=> $6::vector) AS score FROM memories m WHERE m.removed_at IS NULL AND m.embedding IS NOT NULL \
+        "SELECT m.id, 1 - (m.embedding <=> $7::vector) AS score FROM memories m WHERE m.removed_at IS NULL AND m.embedding IS NOT NULL \
          AND ($1::text IS NULL OR m.language = $1) \
          AND (cardinality($2::text[]) = 0 OR m.tags && $2) \
          AND ($3::text IS NULL OR m.conditions->'technologies' ? $3) \
-         AND (m.visibility = 'public' OR ($4::uuid IS NOT NULL AND m.workspace_id = $4 AND m.visibility = 'developer_shared') OR ($5::uuid IS NOT NULL AND m.author_agent_id = $5 AND m.visibility = 'agent_private')) \
-         ORDER BY m.embedding <=> $6::vector ASC LIMIT $7",
+         AND (m.visibility = 'public' \
+           OR (cardinality($4::uuid[]) > 0 AND m.workspace_id = ANY($4::uuid[]) AND m.visibility = 'developer_shared') \
+           OR (cardinality($5::uuid[]) > 0 AND m.workspace_id = ANY($5::uuid[])) \
+           OR ($6::uuid IS NOT NULL AND m.author_agent_id = $6 AND m.visibility = 'agent_private')) \
+         ORDER BY m.embedding <=> $7::vector ASC LIMIT $8",
     )
-    .bind(language).bind(tags).bind(technology).bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id))
+    .bind(language).bind(tags).bind(technology).bind(&shared_workspaces).bind(&full_workspaces).bind(agent_id)
     .bind(vector).bind(SEARCH_CANDIDATES)
     .fetch_all(&state.pool).await?;
     let minimum = state.thresholds.semantic_min;
@@ -2252,6 +2282,40 @@ async fn can_read_memory(
     Ok(can_read_row(&row, agent))
 }
 
+fn can_read_row_principal(row: &MemoryAccessRow, principal: &ReadPrincipal) -> bool {
+    if row.removed_at.is_some() {
+        return false;
+    }
+    if row.visibility == "public" {
+        return true;
+    }
+    match principal {
+        ReadPrincipal::Agent(agent) => {
+            (row.visibility == "developer_shared" && row.workspace_id == agent.workspace_id)
+                || (row.visibility == "agent_private" && row.author_agent_id == agent.agent_id)
+        }
+        ReadPrincipal::Developer { workspaces } => workspaces.contains(&row.workspace_id),
+        ReadPrincipal::Anonymous => false,
+    }
+}
+
+async fn can_read_memory_principal(
+    pool: &PgPool,
+    id: Uuid,
+    principal: &ReadPrincipal,
+) -> ApiResult<bool> {
+    let Some(row) = sqlx::query_as::<_, MemoryAccessRow>(
+        "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM memories WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(false);
+    };
+    Ok(can_read_row_principal(&row, principal))
+}
+
 async fn ensure_workspace_owner(
     pool: &PgPool,
     workspace_id: Uuid,
@@ -2331,7 +2395,9 @@ async fn embed(state: &AppState, input: &str) -> ApiResult<Option<String>> {
         .http
         .post(&config.endpoint)
         .bearer_auth(&config.api_key)
-        .json(&json!({ "model": config.model, "input": input }))
+        // 显式锁定维度：数据库列固定 vector(1024)，模型侧若不传 dimensions
+        // （如智谱 embedding-3）会默认返回其他维度，导致写入/检索被维度校验拒绝。
+        .json(&json!({ "model": config.model, "input": input, "dimensions": EMBEDDING_DIM }))
         .send()
         .await
         .map_err(|_| ApiError::internal("Embedding 服务暂时不可用"))?;
