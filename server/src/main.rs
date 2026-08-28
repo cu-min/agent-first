@@ -666,6 +666,7 @@ struct WorkspaceOverview {
     name: String,
     publication_policy: String,
     created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
 }
 
 #[derive(Serialize, FromRow)]
@@ -767,6 +768,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/workspaces/{id}/invite/rotate",
             post(rotate_workspace_invite),
         )
+        .route("/v1/public/overview", get(public_overview))
+        .route("/v1/public/memories", get(list_public_memories))
         .route("/v1/memories", get(list_memories).post(create_memory))
         .route("/v1/memories/import", post(import_memories))
         .route("/v1/memories/{id}", get(get_memory))
@@ -1404,6 +1407,11 @@ async fn import_memories(
 struct ListMemoriesQuery {
     limit: Option<i64>,
     offset: Option<i64>,
+    visibility: Option<String>,
+    outcome_kind: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
+    order_by: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1456,56 +1464,224 @@ async fn list_memories(
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
     let offset = query.offset.unwrap_or(0).max(0);
     let principal = resolve_list_principal(&state, &headers).await?;
+
+    let vis_filter = query.visibility.as_deref().filter(|v| ["public", "developer_shared", "agent_private"].contains(v));
+    let outcome_filter = query.outcome_kind.as_deref().filter(|v| ["success", "failure", "partial", "unknown"].contains(v));
+    let since = query.since.as_deref().and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
+    let until = query.until.as_deref().and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
+    let order = match query.order_by.as_deref() {
+        Some("reuse") => "m.agent_positive_feedback DESC, m.created_at DESC",
+        Some("feedback") => "m.human_positive_feedback DESC, m.created_at DESC",
+        Some("evidence") => "m.evidence_count DESC, m.created_at DESC",
+        _ => "m.created_at DESC",
+    };
+
     let (total, ids) = match principal {
         ListPrincipal::Agent(agent) => {
-            let total = sqlx::query_scalar::<_, i64>(
-                "SELECT count(*) FROM memories m WHERE m.removed_at IS NULL \
-                 AND (m.visibility = 'public' OR (m.workspace_id = $1 AND m.visibility = 'developer_shared') OR (m.author_agent_id = $2 AND m.visibility = 'agent_private'))",
-            )
-            .bind(agent.workspace_id)
-            .bind(agent.agent_id)
-            .fetch_one(&state.pool)
-            .await?;
-            let ids: Vec<Uuid> = sqlx::query(
-                "SELECT m.id FROM memories m WHERE m.removed_at IS NULL \
-                 AND (m.visibility = 'public' OR (m.workspace_id = $1 AND m.visibility = 'developer_shared') OR (m.author_agent_id = $2 AND m.visibility = 'agent_private')) \
-                 ORDER BY m.created_at DESC LIMIT $3 OFFSET $4",
-            )
-            .bind(agent.workspace_id)
-            .bind(agent.agent_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&state.pool)
-            .await?
-            .into_iter()
-            .map(|row| row.get("id"))
-            .collect();
+            let mut conditions = vec!["m.removed_at IS NULL".to_string(), "(m.visibility = 'public' OR (m.workspace_id = $1 AND m.visibility = 'developer_shared') OR (m.author_agent_id = $2 AND m.visibility = 'agent_private'))".to_string()];
+            let mut param_idx = 3;
+            if let Some(_v) = vis_filter {
+                conditions.push(format!("m.visibility = ${}", param_idx));
+                param_idx += 1;
+            }
+            if let Some(_v) = outcome_filter {
+                conditions.push(format!("m.outcome_kind = ${}", param_idx));
+                param_idx += 1;
+            }
+            if since.is_some() {
+                conditions.push(format!("m.created_at >= ${}", param_idx));
+                param_idx += 1;
+            }
+            if until.is_some() {
+                conditions.push(format!("m.created_at <= ${}", param_idx));
+                param_idx += 1;
+            }
+            let where_clause = conditions.join(" AND ");
+            let total_sql = format!("SELECT count(*) FROM memories m WHERE {}", where_clause);
+            let ids_sql = format!("SELECT m.id FROM memories m WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}", where_clause, order, param_idx, param_idx + 1);
+
+            let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql).bind(agent.workspace_id).bind(agent.agent_id);
+            let mut ids_query = sqlx::query(&ids_sql).bind(agent.workspace_id).bind(agent.agent_id);
+            if let Some(v) = vis_filter { total_query = total_query.bind(v); ids_query = ids_query.bind(v); }
+            if let Some(v) = outcome_filter { total_query = total_query.bind(v); ids_query = ids_query.bind(v); }
+            if let Some(s) = since { total_query = total_query.bind(s); ids_query = ids_query.bind(s); }
+            if let Some(u) = until { total_query = total_query.bind(u); ids_query = ids_query.bind(u); }
+            total_query = total_query.bind(limit).bind(offset);
+            ids_query = ids_query.bind(limit).bind(offset);
+
+            let total = total_query.fetch_one(&state.pool).await?;
+            let ids: Vec<Uuid> = ids_query.fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
             (total, ids)
         }
         ListPrincipal::Developer(developer) => {
-            let total = sqlx::query_scalar::<_, i64>(
-                "SELECT count(*) FROM memories m JOIN workspaces w ON w.id = m.workspace_id \
-                 WHERE m.removed_at IS NULL AND w.developer_id = $1",
-            )
-            .bind(developer.developer_id)
-            .fetch_one(&state.pool)
-            .await?;
-            let ids: Vec<Uuid> = sqlx::query(
-                "SELECT m.id FROM memories m JOIN workspaces w ON w.id = m.workspace_id \
-                 WHERE m.removed_at IS NULL AND w.developer_id = $1 \
-                 ORDER BY m.created_at DESC LIMIT $2 OFFSET $3",
-            )
-            .bind(developer.developer_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&state.pool)
-            .await?
-            .into_iter()
-            .map(|row| row.get("id"))
-            .collect();
+            let mut conditions = vec!["m.removed_at IS NULL".to_string(), "w.developer_id = $1".to_string()];
+            let mut param_idx = 2;
+            if let Some(_v) = vis_filter {
+                conditions.push(format!("m.visibility = ${}", param_idx));
+                param_idx += 1;
+            }
+            if let Some(_v) = outcome_filter {
+                conditions.push(format!("m.outcome_kind = ${}", param_idx));
+                param_idx += 1;
+            }
+            if since.is_some() {
+                conditions.push(format!("m.created_at >= ${}", param_idx));
+                param_idx += 1;
+            }
+            if until.is_some() {
+                conditions.push(format!("m.created_at <= ${}", param_idx));
+                param_idx += 1;
+            }
+            let where_clause = conditions.join(" AND ");
+            let total_sql = format!("SELECT count(*) FROM memories m JOIN workspaces w ON w.id = m.workspace_id WHERE {}", where_clause);
+            let ids_sql = format!("SELECT m.id FROM memories m JOIN workspaces w ON w.id = m.workspace_id WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}", where_clause, order, param_idx, param_idx + 1);
+
+            let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql).bind(developer.developer_id);
+            let mut ids_query = sqlx::query(&ids_sql).bind(developer.developer_id);
+            if let Some(v) = vis_filter { total_query = total_query.bind(v); ids_query = ids_query.bind(v); }
+            if let Some(v) = outcome_filter { total_query = total_query.bind(v); ids_query = ids_query.bind(v); }
+            if let Some(s) = since { total_query = total_query.bind(s); ids_query = ids_query.bind(s); }
+            if let Some(u) = until { total_query = total_query.bind(u); ids_query = ids_query.bind(u); }
+            total_query = total_query.bind(limit).bind(offset);
+            ids_query = ids_query.bind(limit).bind(offset);
+
+            let total = total_query.fetch_one(&state.pool).await?;
+            let ids: Vec<Uuid> = ids_query.fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
             (total, ids)
         }
     };
+    let items = fetch_memory_summaries(&state.pool, &ids).await?;
+    Ok(Json(MemoryListOutput {
+        items,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+#[derive(Serialize)]
+struct PublicStats {
+    public_memories: i64,
+    agents: i64,
+    reuse_total: i64,
+}
+
+#[derive(Serialize, FromRow)]
+struct ActivityItem {
+    kind: String,
+    at: OffsetDateTime,
+    problem: String,
+    agent_name: Option<String>,
+    verdict: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PublicOverview {
+    stats: PublicStats,
+    activity: Vec<ActivityItem>,
+    top: Vec<MemorySummary>,
+}
+
+async fn public_overview(State(state): State<AppState>) -> ApiResult<Json<PublicOverview>> {
+    let public_memories = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM memories WHERE visibility = 'public' AND removed_at IS NULL",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    let agents = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM agents WHERE revoked_at IS NULL",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    let reuse_total = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM memory_feedback f JOIN memories m ON m.id = f.memory_id \
+         WHERE m.visibility = 'public' AND m.removed_at IS NULL \
+         AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked')",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+    let activity = sqlx::query_as::<_, ActivityItem>(
+        "SELECT kind, at, problem, agent_name, verdict FROM (\
+           SELECT 'published' AS kind, m.published_at AS at, m.problem, a.name AS agent_name, NULL::text AS verdict \
+           FROM memories m JOIN agents a ON a.id = m.author_agent_id \
+           WHERE m.visibility = 'public' AND m.removed_at IS NULL AND m.published_at IS NOT NULL \
+           UNION ALL \
+           SELECT 'feedback', f.created_at, m.problem, a.name, f.verdict \
+           FROM memory_feedback f JOIN memories m ON m.id = f.memory_id LEFT JOIN agents a ON a.id = f.agent_id \
+           WHERE m.visibility = 'public' AND m.removed_at IS NULL \
+           AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked')\
+         ) t ORDER BY at DESC LIMIT 8",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let top_ids: Vec<Uuid> = sqlx::query(
+        "SELECT m.id FROM memories m \
+         LEFT JOIN memory_feedback f ON f.memory_id = m.id AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked') \
+         WHERE m.visibility = 'public' AND m.removed_at IS NULL \
+         GROUP BY m.id ORDER BY COUNT(f.id) DESC, m.published_at DESC NULLS LAST LIMIT 3",
+    )
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .map(|row| row.get("id"))
+    .collect();
+    let top = fetch_memory_summaries(&state.pool, &top_ids).await?;
+    Ok(Json(PublicOverview {
+        stats: PublicStats {
+            public_memories,
+            agents,
+            reuse_total,
+        },
+        activity,
+        top,
+    }))
+}
+
+async fn list_public_memories(
+    State(state): State<AppState>,
+    Query(query): Query<ListMemoriesQuery>,
+) -> ApiResult<Json<MemoryListOutput>> {
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let outcome_filter = query.outcome_kind.as_deref().filter(|v| ["success", "failure", "partial", "unknown"].contains(v));
+    let since = query.since.as_deref().and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
+    let until = query.until.as_deref().and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
+    let order = match query.order_by.as_deref() {
+        Some("reuse") => "agent_positive_feedback DESC, created_at DESC",
+        Some("feedback") => "human_positive_feedback DESC, created_at DESC",
+        Some("evidence") => "evidence_count DESC, created_at DESC",
+        _ => "published_at DESC NULLS LAST, created_at DESC",
+    };
+
+    let mut conditions = vec!["visibility = 'public'".to_string(), "removed_at IS NULL".to_string()];
+    let mut param_idx = 1;
+    if outcome_filter.is_some() {
+        conditions.push(format!("outcome_kind = ${}", param_idx));
+        param_idx += 1;
+    }
+    if since.is_some() {
+        conditions.push(format!("created_at >= ${}", param_idx));
+        param_idx += 1;
+    }
+    if until.is_some() {
+        conditions.push(format!("created_at <= ${}", param_idx));
+        param_idx += 1;
+    }
+    let where_clause = conditions.join(" AND ");
+    let total_sql = format!("SELECT count(*) FROM memories WHERE {}", where_clause);
+    let ids_sql = format!("SELECT id FROM memories WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}", where_clause, order, param_idx, param_idx + 1);
+
+    let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql);
+    let mut ids_query = sqlx::query(&ids_sql);
+    if let Some(v) = outcome_filter { total_query = total_query.bind(v); ids_query = ids_query.bind(v); }
+    if let Some(s) = since { total_query = total_query.bind(s); ids_query = ids_query.bind(s); }
+    if let Some(u) = until { total_query = total_query.bind(u); ids_query = ids_query.bind(u); }
+    total_query = total_query.bind(limit).bind(offset);
+    ids_query = ids_query.bind(limit).bind(offset);
+
+    let total = total_query.fetch_one(&state.pool).await?;
+    let ids: Vec<Uuid> = ids_query.fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
     let items = fetch_memory_summaries(&state.pool, &ids).await?;
     Ok(Json(MemoryListOutput {
         items,
@@ -1778,7 +1954,7 @@ async fn developer_overview(
 ) -> ApiResult<Json<DeveloperOverview>> {
     let developer = require_developer(&state, &headers).await?;
     let workspaces = sqlx::query_as::<_, WorkspaceOverview>(
-        "SELECT id, name, publication_policy, created_at FROM workspaces WHERE developer_id = $1 ORDER BY created_at DESC",
+        "SELECT id, name, publication_policy, created_at, updated_at FROM workspaces WHERE developer_id = $1 ORDER BY created_at DESC",
     ).bind(developer.developer_id).fetch_all(&state.pool).await?;
     let agents = sqlx::query_as::<_, AgentOverview>(
         "SELECT a.id, a.workspace_id, a.name, a.created_at FROM agents a JOIN workspaces w ON w.id = a.workspace_id WHERE w.developer_id = $1 AND a.revoked_at IS NULL ORDER BY a.created_at DESC",
@@ -1805,7 +1981,7 @@ async fn update_publication_policy(
         return Err(ApiError::bad_request("公开策略只能是 manual 或 auto"));
     }
     ensure_workspace_owner(&state.pool, id, developer.developer_id).await?;
-    sqlx::query("UPDATE workspaces SET publication_policy = $1 WHERE id = $2")
+    sqlx::query("UPDATE workspaces SET publication_policy = $1, updated_at = now() WHERE id = $2")
         .bind(&input.publication_policy)
         .bind(id)
         .execute(&state.pool)
