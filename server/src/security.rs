@@ -89,9 +89,16 @@ pub fn validate_login_name(value: &str) -> Result<(), &'static str> {
 }
 
 pub fn validate_password(value: &str) -> Result<(), &'static str> {
-    (value.chars().count() >= 6 && value.chars().count() <= 256)
-        .then_some(())
-        .ok_or("密码至少需要 6 个字符")
+    let len = value.chars().count();
+    if !(8..=256).contains(&len) {
+        return Err("密码长度需要 8 到 256 个字符");
+    }
+    let has_letter = value.chars().any(|c| c.is_ascii_alphabetic());
+    let has_digit = value.chars().any(|c| c.is_ascii_digit());
+    if !has_letter || !has_digit {
+        return Err("密码需要同时包含字母和数字");
+    }
+    Ok(())
 }
 
 pub fn validate_https_url(value: &str) -> Result<(), &'static str> {
@@ -146,7 +153,9 @@ mod tests {
     #[test]
     fn accepts_simple_account_credentials() {
         assert!(validate_login_name("我的账号").is_ok());
-        assert!(validate_password("123456").is_ok());
-        assert!(validate_password("12345").is_err());
+        assert!(validate_password("hello123").is_ok());
+        assert!(validate_password("abcdefg").is_err());
+        assert!(validate_password("12345678").is_err());
+        assert!(validate_password("short1").is_err());
     }
 }
