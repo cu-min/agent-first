@@ -20,7 +20,7 @@ export default function LibraryPage({ token, onToast, openMemory }: { token: str
   const [filterSort, setFilterSort] = useState('latest')
 
   const searchTimer = useRef<number | null>(null)
-  const searchSeq = useRef(0)
+  const searchAbort = useRef<AbortController | null>(null)
 
   const buildQuery = (o: FilterOverrides = {}) => {
     const params = new URLSearchParams()
@@ -53,7 +53,7 @@ export default function LibraryPage({ token, onToast, openMemory }: { token: str
     setLoading(true)
     try {
       const qs = buildQuery(o)
-      const data = await api<MemoryList>(`/v1/memories?limit=20&offset=${offset}${qs ? '&' + qs : ''}`, { headers: { Authorization: `Bearer ${tokenArg}` } })
+      const data = await api<MemoryList>(`/v1/memories?limit=20&offset=${offset}${qs ? '&' + qs : ''}`, authHeaders(tokenArg))
       setMineList(current => offset > 0 && current ? { ...data, items: [...current.items, ...data.items] } : data)
     } catch (error) { onToast(error instanceof Error ? error.message : '无法读取记忆列表', 'error') }
     finally { setLoading(false) }
@@ -68,33 +68,46 @@ export default function LibraryPage({ token, onToast, openMemory }: { token: str
     if (!token) setMineList(null)
   }, [libraryFilter, token]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => () => {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current)
+    searchAbort.current?.abort()
+  }, [])
+
+  const cancelSearch = () => {
+    if (searchTimer.current) window.clearTimeout(searchTimer.current)
+    searchAbort.current?.abort()
+    searchAbort.current = null
+    setSearchResults(null); setSearching(false)
+  }
+
   const doSearch = async (q: string) => {
-    if (q.trim().length < 2) { setSearchResults(null); setSearching(false); return }
-    const seq = ++searchSeq.current
+    if (q.trim().length < 2) { cancelSearch(); return }
+    searchAbort.current?.abort()
+    const controller = new AbortController()
+    searchAbort.current = controller
     setSearching(true)
     try {
-      const data = await api<{ items: Memory[] }>('/v1/search', { method: 'POST', body: JSON.stringify({ query: q.trim(), limit: 10 }), ...authHeaders(token) })
-      if (seq !== searchSeq.current) return
+      const data = await api<{ items: Memory[] }>('/v1/search', { method: 'POST', body: JSON.stringify({ query: q.trim(), limit: 10 }), signal: controller.signal, ...authHeaders(token) })
+      if (controller.signal.aborted) return
       setSearchResults(data.items)
     } catch (error) {
-      if (seq !== searchSeq.current) return
+      if (controller.signal.aborted) return
       onToast(error instanceof Error ? error.message : '检索失败', 'error')
     } finally {
-      if (seq === searchSeq.current) setSearching(false)
+      if (!controller.signal.aborted) setSearching(false)
     }
   }
 
   const onQueryChange = (value: string) => {
     setQuery(value)
     if (searchTimer.current) window.clearTimeout(searchTimer.current)
-    if (value.trim().length < 2) { setSearchResults(null); setSearching(false); return }
+    if (value.trim().length < 2) { cancelSearch(); return }
     searchTimer.current = window.setTimeout(() => void doSearch(value), 250)
   }
 
   const clearSearch = () => {
-    if (searchTimer.current) window.clearTimeout(searchTimer.current)
-    searchSeq.current++
-    setSearchResults(null); setSearching(false); setQuery('')
+    cancelSearch()
+    setQuery('')
   }
 
   const applyFilter = (o: FilterOverrides) => {
