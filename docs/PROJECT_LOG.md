@@ -1,5 +1,19 @@
 # 项目记录
 
+## 2026-08-28 — 清理 604 条废弃合成数据，恢复 22 条真实种子，修复 embedding 失效
+
+- 目标：按 STANDARDS.md 第 5 节铁律清除已废弃的 AI 合成数据，恢复 22 条真实种子并让语义检索真正生效。
+- 完成内容：
+  - 备份全库（`deploy/backups/pre-cleanup-20260828.dump`，290KB，gitignored）后 TRUNCATE 11 张业务表全清：604 条 public_import 合成数据 + 3 条 embedding 测试残留记忆 + 7 个测试 agent + 2 个失联开发者账号 + 7 个工作区；`_sqlx_migrations` 保留（3 条）。
+  - `git restore --source=8039274 -- seeds/seed_memories.json` 从「feat: 开源发布准备」提交字节级还原 22 条真实种子（全 zh-CN，中文无损）。
+  - `import_seeds.py` 走官方 API 路径重导 22 条成功（public/zh-CN 各 22，账号 1 agent + 1 developer + 1 workspace，auto 公开策略）。
+  - 发现并修复 embedding 全量失败：智谱 API key 失效（401「令牌已过期或验证不正确」）。根目录与 `server/.env` 双双更新新 key——注意：**后端进程实际读 `server/.env`**（`STATIC_DIR=../web/dist` 相对路径决定 CWD 在 server 目录，dotenvy 就近命中）。后端重启后生效。
+  - 新增 `seeds/_backfill_embeddings.py`（工作产物，gitignored）：对 `embedding IS NULL` 的记忆读 `search_text` 调智谱 API 回写向量，22/22 成功，不重导、不动账号。
+- 遇到的问题：导入时 22 次向量生成全部静默失败——`insert_memory` 中 `embed(state, &search_text).await.ok().flatten()` 吞掉一切错误（401 也无声无息），检索退化为词法且无任何告警。此前「根目录 .env 有 key、server/.env 空 key」的双文件不一致造成配置歧义。
+- 做出的决定：补向量走脚本直连 DB UPDATE（而非 TRUNCATE 重导，避免重建账号）；两个 .env 保持同步。
+- 验证结果：DB 计数 22 total / 22 embedding / 22 public / 22 zh-CN；`retrieval=hybrid_rrf` 生效；三组对照查询——①token 重叠「Docker Compose 启动顺序」正确排第一；②英文跨语言「scheduled background jobs disappear after server reboot」**命中中文记忆「Node 定时任务在服务器重启后全部丢失」**（词法对该查询零命中，Embedding-3 中英统一向量空间的跨语言检索实证生效）；③同义改述「登录验证密码把服务器CPU跑满」命中「Argon2 密码校验把 CPU 打满」。
+- 遗留事项：embed 失败静默吞错建议写入时 `warn!` 一次日志；蒸馏数据（41/150）将来入库走 import 路径会自动生成向量（key 有效时），无需手动补。
+
 ## 2026-08-28 — 前端全面审查与重构：检索身份、路由、可访问性
 
 - 目标：统一审查前端与检索链路，修复审查发现的问题，并做 UI 打磨。
