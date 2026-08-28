@@ -125,6 +125,18 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | `APP_ORIGIN` | CORS 白名单 |
 | `STATIC_DIR` | 前端构建产物路径 |
 | `EMBEDDING_ENDPOINT` / `API_KEY` / `MODEL` | OpenAI 兼容 embedding 服务（缺省时退化为纯词法） |
+| `TRUSTED_PROXIES` | 可信反向代理网段（CIDR，逗号分隔）。设置后限流按 X-Forwarded-For 解析真实客户端 IP |
+| `SEARCH_LEXICAL_MIN_SCORE` | 词法检索最低相关分（默认 0.10，范围 0-1） |
+| `SEARCH_SEMANTIC_MIN_SCORE` | 语义检索最低余弦相似度（默认 0.35，范围 0-1） |
+
+### 6.4 生产部署
+
+`deploy/` 目录提供生产编排：`compose.prod.yaml`（db + server + Caddy + backup 四服务）、`Caddyfile`（自动 HTTPS、HSTS）、`.env.example`（必填变量模板）。每日 `pg_dump` 全量备份，保留 14 天。启动方式：
+
+```bash
+cd deploy && cp .env.example .env  # 填写 DOMAIN / ACME_EMAIL / POSTGRES_PASSWORD
+docker compose -f compose.prod.yaml up -d
+```
 
 ## 7. 优化记录
 
@@ -137,8 +149,20 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | 2026-08-26 | embedding 熔断器，防止语义服务故障阻塞检索 |
 | 2026-08-26 | 修复 remove 不清 relations 的悬空引用、get_gap 的 N+1 查询 |
 | 2026-08-26 | 日志增加时间戳 |
+| 2026-08-28 | 反代真实 IP：`TRUSTED_PROXIES` 网段 + X-Forwarded-For 解析，限流键改用客户端真实 IP |
+| 2026-08-28 | 检索相关度阈值：词法（分词命中率 GREATEST 整句相似度）与语义（余弦相似度）双路径阈值过滤，低于阈值不返回 |
+| 2026-08-28 | 记忆批量导入 `POST /v1/memories/import`（≤100 条/次，原子写入）+ 种子语料 `seeds/` |
+| 2026-08-28 | 记忆浏览 `GET /v1/memories`（分页，Agent/开发者双视角）+ 反馈详情 `GET /v1/memories/{id}/feedback` |
+| 2026-08-28 | 账户完整删除 `DELETE /v1/developer/account`（密码+DELETE 确认，级联清全部数据） |
+| 2026-08-28 | 服务条款 + 隐私政策（控制台页脚弹窗）；官方接入示例 `docs/examples/`（Python/Node） |
+| 2026-08-28 | 生产部署编排 `deploy/`（Caddy HTTPS、每日 pg_dump 备份保留 14 天） |
 
 ## 8. 待办
 
-- **P0（上线阻断）**：反代后真实 IP 限流、HTTPS、限流多实例化
-- **P2（运维）**：备份/告警、连接池扩容、前端密钥刷新提示
+- ~~P0（上线阻断）：反代后真实 IP 限流、HTTPS~~（已完成，见 `deploy/`）
+- **P0（上线阻断）**：限流多实例化（当前为进程内存实现，多实例部署需共享存储）
+- **P2（运维）**：session 过期清理、连接池扩容、前端密钥刷新提示、告警接入
+- **P2（检索）**：缺口搜索（`GET /v1/gaps` 列表）、按时间/outcome_kind 过滤、使用统计
+- **P3（代码质量）**：`main.rs` 单文件拆分（~1900 行），按 `routes/`、`handlers/`、`models/`、`search/`、`auth/` 等模块重组
+- **P3（代码质量）**：错误处理增强——`ApiError` 增加错误类型细分、结构化日志关联、统一错误码规范
+- **P3（生态）**：官方 SDK、LangChain/LlamaIndex retriever 集成、查询改写、记忆补丁工作流前端化

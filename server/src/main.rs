@@ -3,7 +3,7 @@ mod security;
 use std::{
     collections::{HashMap, HashSet},
     env,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
@@ -11,10 +11,10 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,7 @@ const BREAKER_THRESHOLD: u32 = 3;
 const BREAKER_COOLDOWN_SECS: u64 = 30;
 // 与 migrations/0002 中 vector(1024) 列类型保持一致（bge-m3 输出 1024 维）
 const EMBEDDING_DIM: usize = 1024;
+const IMPORT_BATCH_MAXIMUM: usize = 100;
 
 #[derive(Clone)]
 struct AppState {
@@ -46,6 +47,94 @@ struct AppState {
     http: Client,
     limiter: Arc<RateLimiter>,
     embed_breaker: Arc<EmbeddingBreaker>,
+    trusted_proxies: Vec<TrustedProxy>,
+    thresholds: SearchThresholds,
+}
+
+#[derive(Clone, Copy)]
+struct SearchThresholds {
+    lexical_min: f64,
+    semantic_min: f64,
+}
+
+#[derive(Clone, Copy)]
+struct TrustedProxy {
+    base: IpAddr,
+    prefix: u8,
+}
+
+fn parse_trusted_proxies(raw: Option<String>) -> Vec<TrustedProxy> {
+    let Some(raw) = raw else {
+        return Vec::new();
+    };
+    raw.split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                return None;
+            }
+            let (base, prefix) = match entry.split_once('/') {
+                Some((base, prefix)) => (base, prefix.parse::<u8>().ok()?),
+                None => (entry, if entry.contains(':') { 128 } else { 32 }),
+            };
+            let base: IpAddr = base.parse().ok()?;
+            let maximum = if base.is_ipv4() { 32 } else { 128 };
+            if prefix > maximum {
+                return None;
+            }
+            Some(TrustedProxy { base, prefix })
+        })
+        .collect()
+}
+
+fn ip_bits(ip: IpAddr) -> u128 {
+    match ip {
+        IpAddr::V4(value) => u32::from(value) as u128,
+        IpAddr::V6(value) => u128::from(value),
+    }
+}
+
+fn is_trusted_proxy(ip: IpAddr, trusted: &[TrustedProxy]) -> bool {
+    trusted.iter().any(|proxy| {
+        if proxy.base.is_ipv4() != ip.is_ipv4() {
+            return false;
+        }
+        let width = if ip.is_ipv4() { 32 } else { 128 };
+        let shift = width - u32::from(proxy.prefix);
+        (ip_bits(ip) >> shift) == (ip_bits(proxy.base) >> shift)
+    })
+}
+
+fn client_ip(address: &SocketAddr, headers: &HeaderMap, trusted: &[TrustedProxy]) -> IpAddr {
+    let peer = address.ip();
+    if !is_trusted_proxy(peer, trusted) {
+        return peer;
+    }
+    if let Some(value) = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+    {
+        let candidates: Vec<IpAddr> = value
+            .split(',')
+            .filter_map(|entry| entry.trim().parse().ok())
+            .collect();
+        if let Some(client) = candidates
+            .iter()
+            .rev()
+            .find(|candidate| !is_trusted_proxy(**candidate, trusted))
+            .or_else(|| candidates.first())
+        {
+            return *client;
+        }
+    }
+    if let Some(ip) = headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse().ok())
+    {
+        return ip;
+    }
+    peer
 }
 
 #[derive(Clone)]
@@ -61,6 +150,8 @@ struct AppConfig {
     app_origin: HeaderValue,
     static_dir: PathBuf,
     embeddings: Option<EmbeddingConfig>,
+    trusted_proxies: Vec<TrustedProxy>,
+    thresholds: SearchThresholds,
 }
 
 impl AppConfig {
@@ -92,6 +183,10 @@ impl AppConfig {
             }
             _ => None,
         };
+        let thresholds = SearchThresholds {
+            lexical_min: parse_score_env("SEARCH_LEXICAL_MIN_SCORE", 0.10),
+            semantic_min: parse_score_env("SEARCH_SEMANTIC_MIN_SCORE", 0.35),
+        };
         Ok(Self {
             database_url,
             bind_addr,
@@ -100,7 +195,16 @@ impl AppConfig {
                 env::var("STATIC_DIR").unwrap_or_else(|_| "../web/dist".to_owned()),
             ),
             embeddings,
+            trusted_proxies: parse_trusted_proxies(env::var("TRUSTED_PROXIES").ok()),
+            thresholds,
         })
+    }
+}
+
+fn parse_score_env(name: &str, default: f64) -> f64 {
+    match env::var(name).ok().and_then(|raw| raw.parse::<f64>().ok()) {
+        Some(value) if (0.0..=1.0).contains(&value) => value,
+        _ => default,
     }
 }
 
@@ -627,11 +731,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http: Client::builder().timeout(Duration::from_secs(3)).build()?,
         limiter: Arc::new(RateLimiter::default()),
         embed_breaker: Arc::new(EmbeddingBreaker::default()),
+        trusted_proxies: config.trusted_proxies,
+        thresholds: config.thresholds,
     };
     spawn_session_cleanup(state.pool.clone());
     let cors = CorsLayer::new()
         .allow_origin(config.app_origin)
-        .allow_methods([Method::GET, Method::POST, Method::PUT])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
     let security_headers = SetResponseHeaderLayer::if_not_present(
         header::CONTENT_SECURITY_POLICY,
@@ -652,6 +758,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/developers/claim", post(claim_workspace))
         .route("/v1/developers/login", post(login))
         .route("/v1/developer/overview", get(developer_overview))
+        .route("/v1/developer/account", delete(delete_developer_account))
         .route(
             "/v1/workspaces/{id}/publication-policy",
             post(update_publication_policy),
@@ -660,15 +767,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/workspaces/{id}/invite/rotate",
             post(rotate_workspace_invite),
         )
-        .route("/v1/memories", post(create_memory))
+        .route("/v1/memories", get(list_memories).post(create_memory))
+        .route("/v1/memories/import", post(import_memories))
         .route("/v1/memories/{id}", get(get_memory))
+        .route(
+            "/v1/memories/{id}/feedback",
+            get(list_memory_feedback).post(create_feedback),
+        )
         .route("/v1/memories/{id}/publish", post(publish_memory))
         .route("/v1/memories/{id}/remove", post(remove_memory))
-        .route("/v1/memories/{id}/feedback", post(create_feedback))
         .route("/v1/gaps", post(create_gap))
         .route("/v1/gaps/{id}", get(get_gap))
         .fallback_service(static_service)
-        .layer(RequestBodyLimitLayer::new(64 * 1024))
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
         .layer(security_headers)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -736,11 +847,15 @@ async fn discovery() -> Json<Value> {
 async fn register_agent(
     State(state): State<AppState>,
     ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(input): Json<RegisterAgentInput>,
 ) -> ApiResult<Json<RegisterAgentOutput>> {
     ensure_rate(
         &state,
-        format!("register:{}", address.ip()),
+        format!(
+            "register:{}",
+            client_ip(&address, &headers, &state.trusted_proxies)
+        ),
         8,
         Duration::from_secs(3600),
     )
@@ -842,11 +957,15 @@ async fn rotate_agent_key(
 async fn claim_workspace(
     State(state): State<AppState>,
     ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(input): Json<ClaimWorkspaceInput>,
 ) -> ApiResult<Json<DeveloperSessionOutput>> {
     ensure_rate(
         &state,
-        format!("claim:{}", address.ip()),
+        format!(
+            "claim:{}",
+            client_ip(&address, &headers, &state.trusted_proxies)
+        ),
         5,
         Duration::from_secs(3600),
     )
@@ -894,11 +1013,15 @@ async fn claim_workspace(
 async fn login(
     State(state): State<AppState>,
     ConnectInfo(address): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(input): Json<LoginInput>,
 ) -> ApiResult<Json<DeveloperSessionOutput>> {
     ensure_rate(
         &state,
-        format!("login:{}", address.ip()),
+        format!(
+            "login:{}",
+            client_ip(&address, &headers, &state.trusted_proxies)
+        ),
         10,
         Duration::from_secs(600),
     )
@@ -920,6 +1043,107 @@ async fn login(
     let session = create_developer_session(&mut transaction, row.get("id"), None).await?;
     transaction.commit().await?;
     Ok(Json(session))
+}
+
+#[derive(Deserialize)]
+struct DeleteAccountInput {
+    password: String,
+    confirmation: String,
+}
+
+async fn delete_developer_account(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<DeleteAccountInput>,
+) -> ApiResult<StatusCode> {
+    let developer = require_developer(&state, &headers).await?;
+    if input.confirmation != "DELETE" {
+        return Err(ApiError::bad_request("confirmation 字段必须为 DELETE"));
+    }
+    let row = sqlx::query("SELECT password_hash FROM developers WHERE id = $1")
+        .bind(developer.developer_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(ApiError::unauthorized)?;
+    if !security::verify_password(
+        &input.password,
+        row.get::<String, _>("password_hash").as_str(),
+    ) {
+        return Err(ApiError::bad_request("密码不正确"));
+    }
+    let workspace_ids: Vec<Uuid> = sqlx::query("SELECT id FROM workspaces WHERE developer_id = $1")
+        .bind(developer.developer_id)
+        .fetch_all(&state.pool)
+        .await?
+        .into_iter()
+        .map(|row| row.get("id"))
+        .collect();
+    let agent_ids: Vec<Uuid> = sqlx::query("SELECT id FROM agents WHERE workspace_id = ANY($1)")
+        .bind(&workspace_ids)
+        .fetch_all(&state.pool)
+        .await?
+        .into_iter()
+        .map(|row| row.get("id"))
+        .collect();
+    let mut transaction = state.pool.begin().await?;
+    sqlx::query("DELETE FROM memory_feedback WHERE developer_id = $1 OR agent_id = ANY($2)")
+        .bind(developer.developer_id)
+        .bind(&agent_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query(
+        "DELETE FROM memory_relations WHERE source_memory_id IN (SELECT id FROM memories WHERE workspace_id = ANY($1)) \
+         OR target_memory_id IN (SELECT id FROM memories WHERE workspace_id = ANY($1))",
+    )
+    .bind(&workspace_ids)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query("DELETE FROM memory_evidence WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ANY($1))")
+        .bind(&workspace_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM memory_feedback WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ANY($1))")
+        .bind(&workspace_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query(
+        "DELETE FROM gap_memory_links WHERE gap_id IN (SELECT id FROM experience_gaps WHERE workspace_id = ANY($1)) \
+         OR memory_id IN (SELECT id FROM memories WHERE workspace_id = ANY($1))",
+    )
+    .bind(&workspace_ids)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query("DELETE FROM memories WHERE workspace_id = ANY($1)")
+        .bind(&workspace_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM experience_gaps WHERE workspace_id = ANY($1)")
+        .bind(&workspace_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM agent_keys WHERE agent_id = ANY($1)")
+        .bind(&agent_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM agents WHERE workspace_id = ANY($1)")
+        .bind(&workspace_ids)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM developer_sessions WHERE developer_id = $1")
+        .bind(developer.developer_id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM workspaces WHERE developer_id = $1")
+        .bind(developer.developer_id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM developers WHERE id = $1")
+        .bind(developer.developer_id)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    info!(developer_id = %developer.developer_id, "developer account and all data deleted");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_developer_session(
@@ -951,7 +1175,10 @@ async fn search(
 ) -> ApiResult<Json<SearchOutput>> {
     ensure_rate(
         &state,
-        format!("search:{}", address.ip()),
+        format!(
+            "search:{}",
+            client_ip(&address, &headers, &state.trusted_proxies)
+        ),
         60,
         Duration::from_secs(60),
     )
@@ -1012,6 +1239,36 @@ async fn create_memory(
     )
     .await?;
     validate_memory_input(&input)?;
+    let mut transaction = state.pool.begin().await?;
+    let inserted = insert_memory(&state, &mut transaction, &agent, input, "agent").await?;
+    transaction.commit().await?;
+    Ok(Json(MemoryCreatedOutput {
+        id: inserted.id,
+        visibility: inserted.visibility.as_str().to_owned(),
+        publication_state: if inserted.published {
+            "published"
+        } else if inserted.publication_requested {
+            "pending_owner"
+        } else {
+            "private_or_shared"
+        },
+    }))
+}
+
+struct InsertedMemory {
+    id: Uuid,
+    visibility: Visibility,
+    published: bool,
+    publication_requested: bool,
+}
+
+async fn insert_memory(
+    state: &AppState,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    agent: &AgentPrincipal,
+    input: MemoryInput,
+    source_type: &str,
+) -> ApiResult<InsertedMemory> {
     let tags = security::normalize_tags(input.tags).map_err(ApiError::bad_request)?;
     let language = input.language.unwrap_or_else(|| "zh-CN".to_owned());
     security::validate_text(&language, "语言", 2, 20).map_err(ApiError::bad_request)?;
@@ -1038,58 +1295,276 @@ async fn create_memory(
         input.outcome,
         tags.join(" ")
     );
-    let embedding = embed(&state, &search_text).await.ok().flatten();
+    let embedding = embed(state, &search_text).await.ok().flatten();
     for relation in &input.relations {
-        if !can_read_memory(&state.pool, relation.target_memory_id, Some(&agent)).await? {
+        if !can_read_memory(&state.pool, relation.target_memory_id, Some(agent)).await? {
             return Err(ApiError::forbidden("不能关联不可访问的记忆"));
         }
     }
     if let Some(gap_id) = input.gap_id {
-        if !can_read_gap(&state.pool, gap_id, &agent).await? {
+        if !can_read_gap(&state.pool, gap_id, agent).await? {
             return Err(ApiError::forbidden("不能关联不可访问的经验缺口"));
         }
     }
     let memory_id = Uuid::new_v4();
-    let mut transaction = state.pool.begin().await?;
     sqlx::query(
-        "INSERT INTO memories (id, workspace_id, author_agent_id, visibility, problem, conditions, action, outcome, outcome_kind, language, tags, search_text, embedding, publication_requested_at, published_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::vector, $14, $15)",
+        "INSERT INTO memories (id, workspace_id, author_agent_id, source_type, visibility, problem, conditions, action, outcome, outcome_kind, language, tags, search_text, embedding, publication_requested_at, published_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::vector, $15, $16)",
     )
-    .bind(memory_id).bind(agent.workspace_id).bind(agent.agent_id).bind(visibility.as_str())
+    .bind(memory_id).bind(agent.workspace_id).bind(agent.agent_id).bind(source_type).bind(visibility.as_str())
     .bind(input.problem.trim()).bind(input.conditions).bind(input.action.trim()).bind(input.outcome.trim())
     .bind(input.outcome_kind.as_str()).bind(language).bind(tags).bind(search_text).bind(embedding)
     .bind(publication_requested.then(OffsetDateTime::now_utc)).bind(published_at)
-    .execute(&mut *transaction).await?;
+    .execute(&mut **transaction).await?;
     for evidence in input.evidence {
         sqlx::query("INSERT INTO memory_evidence (id, memory_id, kind, label, value) VALUES ($1, $2, $3, $4, $5)")
             .bind(Uuid::new_v4()).bind(memory_id).bind(evidence.kind.as_str())
             .bind(evidence.label.map(|value| value.trim().to_owned())).bind(evidence.value.trim())
-            .execute(&mut *transaction).await?;
+            .execute(&mut **transaction).await?;
     }
     for relation in input.relations {
         sqlx::query("INSERT INTO memory_relations (source_memory_id, target_memory_id, relation_type) VALUES ($1, $2, $3)")
             .bind(memory_id).bind(relation.target_memory_id).bind(relation.relation_type.as_str())
-            .execute(&mut *transaction).await?;
+            .execute(&mut **transaction).await?;
     }
     if let Some(gap_id) = input.gap_id {
         sqlx::query("INSERT INTO gap_memory_links (gap_id, memory_id) VALUES ($1, $2)")
             .bind(gap_id)
             .bind(memory_id)
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await?;
     }
-    transaction.commit().await?;
-    Ok(Json(MemoryCreatedOutput {
+    Ok(InsertedMemory {
         id: memory_id,
-        visibility: visibility.as_str().to_owned(),
-        publication_state: if published_at.is_some() {
-            "published"
-        } else if publication_requested {
-            "pending_owner"
+        visibility,
+        published: published_at.is_some(),
+        publication_requested,
+    })
+}
+
+#[derive(Deserialize)]
+struct MemoryImportInput {
+    #[serde(default)]
+    memories: Vec<MemoryInput>,
+}
+
+#[derive(Serialize)]
+struct MemoryImportedOutput {
+    imported: usize,
+    ids: Vec<Uuid>,
+}
+
+async fn import_memories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<MemoryImportInput>,
+) -> ApiResult<Json<MemoryImportedOutput>> {
+    let agent = require_agent(&state, &headers).await?;
+    ensure_rate(
+        &state,
+        format!("import:{}", agent.agent_id),
+        5,
+        Duration::from_secs(3600),
+    )
+    .await?;
+    if input.memories.is_empty() {
+        return Err(ApiError::bad_request("导入列表不能为空"));
+    }
+    if input.memories.len() > IMPORT_BATCH_MAXIMUM {
+        return Err(ApiError::bad_request(format!(
+            "单次最多导入 {IMPORT_BATCH_MAXIMUM} 条记忆"
+        )));
+    }
+    for item in &input.memories {
+        validate_memory_input(item)?;
+    }
+    let mut transaction = state.pool.begin().await?;
+    let mut ids = Vec::with_capacity(input.memories.len());
+    for item in input.memories {
+        let source_type = if item.request_public {
+            "public_import"
         } else {
-            "private_or_shared"
-        },
+            "agent"
+        };
+        ids.push(
+            insert_memory(&state, &mut transaction, &agent, item, source_type)
+                .await?
+                .id,
+        );
+    }
+    transaction.commit().await?;
+    info!(agent_id = %agent.agent_id, count = ids.len(), "memories imported");
+    Ok(Json(MemoryImportedOutput {
+        imported: ids.len(),
+        ids,
     }))
+}
+
+#[derive(Deserialize)]
+struct ListMemoriesQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct MemoryListOutput {
+    items: Vec<MemorySummary>,
+    total: i64,
+    limit: i64,
+    offset: i64,
+}
+
+enum ListPrincipal {
+    Agent(AgentPrincipal),
+    Developer(DeveloperPrincipal),
+}
+
+async fn resolve_list_principal(state: &AppState, headers: &HeaderMap) -> ApiResult<ListPrincipal> {
+    let Some(token) = optional_bearer_token(headers)? else {
+        return Err(ApiError::unauthorized());
+    };
+    let token_hash = security::hash_token(token);
+    if let Some(agent) = sqlx::query_as::<_, AgentPrincipal>(
+        "SELECT a.id AS agent_id, a.workspace_id, w.developer_id, w.publication_policy \
+         FROM agent_keys k JOIN agents a ON a.id = k.agent_id JOIN workspaces w ON w.id = a.workspace_id \
+         WHERE k.key_hash = $1 AND k.revoked_at IS NULL AND a.revoked_at IS NULL",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.pool)
+    .await?
+    {
+        return Ok(ListPrincipal::Agent(agent));
+    }
+    if let Some(developer) = sqlx::query_as::<_, DeveloperPrincipal>(
+        "SELECT d.id AS developer_id FROM developer_sessions s JOIN developers d ON d.id = s.developer_id \
+         WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.pool)
+    .await?
+    {
+        return Ok(ListPrincipal::Developer(developer));
+    }
+    Err(ApiError::unauthorized())
+}
+
+async fn list_memories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListMemoriesQuery>,
+) -> ApiResult<Json<MemoryListOutput>> {
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let principal = resolve_list_principal(&state, &headers).await?;
+    let (total, ids) = match principal {
+        ListPrincipal::Agent(agent) => {
+            let total = sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM memories m WHERE m.removed_at IS NULL \
+                 AND (m.visibility = 'public' OR (m.workspace_id = $1 AND m.visibility = 'developer_shared') OR (m.author_agent_id = $2 AND m.visibility = 'agent_private'))",
+            )
+            .bind(agent.workspace_id)
+            .bind(agent.agent_id)
+            .fetch_one(&state.pool)
+            .await?;
+            let ids: Vec<Uuid> = sqlx::query(
+                "SELECT m.id FROM memories m WHERE m.removed_at IS NULL \
+                 AND (m.visibility = 'public' OR (m.workspace_id = $1 AND m.visibility = 'developer_shared') OR (m.author_agent_id = $2 AND m.visibility = 'agent_private')) \
+                 ORDER BY m.created_at DESC LIMIT $3 OFFSET $4",
+            )
+            .bind(agent.workspace_id)
+            .bind(agent.agent_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&state.pool)
+            .await?
+            .into_iter()
+            .map(|row| row.get("id"))
+            .collect();
+            (total, ids)
+        }
+        ListPrincipal::Developer(developer) => {
+            let total = sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM memories m JOIN workspaces w ON w.id = m.workspace_id \
+                 WHERE m.removed_at IS NULL AND w.developer_id = $1",
+            )
+            .bind(developer.developer_id)
+            .fetch_one(&state.pool)
+            .await?;
+            let ids: Vec<Uuid> = sqlx::query(
+                "SELECT m.id FROM memories m JOIN workspaces w ON w.id = m.workspace_id \
+                 WHERE m.removed_at IS NULL AND w.developer_id = $1 \
+                 ORDER BY m.created_at DESC LIMIT $2 OFFSET $3",
+            )
+            .bind(developer.developer_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&state.pool)
+            .await?
+            .into_iter()
+            .map(|row| row.get("id"))
+            .collect();
+            (total, ids)
+        }
+    };
+    let items = fetch_memory_summaries(&state.pool, &ids).await?;
+    Ok(Json(MemoryListOutput {
+        items,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+#[derive(Serialize, FromRow)]
+struct FeedbackRecord {
+    source_type: String,
+    verdict: String,
+    note: Option<String>,
+    created_at: OffsetDateTime,
+}
+
+async fn list_memory_feedback(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<FeedbackRecord>>> {
+    let memory = load_memory_access(&state.pool, id).await?;
+    let agent = optional_agent(&state, &headers).await.ok().flatten();
+    let authorized = match agent {
+        Some(agent) => can_read_row(&memory, Some(&agent)),
+        None => match optional_bearer_token(&headers)? {
+            Some(token) => {
+                let developer = sqlx::query_as::<_, DeveloperPrincipal>(
+                    "SELECT d.id AS developer_id FROM developer_sessions s JOIN developers d ON d.id = s.developer_id \
+                     WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
+                )
+                .bind(security::hash_token(token))
+                .fetch_optional(&state.pool)
+                .await?;
+                match developer {
+                    Some(developer) => ensure_workspace_owner(
+                        &state.pool,
+                        memory.workspace_id,
+                        developer.developer_id,
+                    )
+                    .await
+                    .is_ok(),
+                    None => false,
+                }
+            }
+            None => false,
+        },
+    };
+    if !authorized {
+        return Err(ApiError::not_found("记忆不存在或不可访问"));
+    }
+    let rows = sqlx::query_as::<_, FeedbackRecord>(
+        "SELECT source_type, verdict, note, created_at FROM memory_feedback WHERE memory_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(rows))
 }
 
 async fn get_memory(
@@ -1465,7 +1940,7 @@ async fn lexical_candidates(
     tags: &[String],
     technology: Option<&str>,
     agent: Option<&AgentPrincipal>,
-) -> ApiResult<Vec<Uuid>> {
+) -> ApiResult<Vec<(Uuid, f64)>> {
     let mut patterns: Vec<String> = tokenize_query(query)
         .into_iter()
         .map(|token| format!("%{}%", token))
@@ -1473,19 +1948,29 @@ async fn lexical_candidates(
     if patterns.is_empty() {
         patterns.push(format!("%{}%", query));
     }
-    let ids = sqlx::query(
-        "SELECT m.id FROM memories m WHERE m.removed_at IS NULL \
+    let rows = sqlx::query(
+        "SELECT m.id, \
+         GREATEST(similarity(m.search_text, $4), \
+           (SELECT count(*) FROM unnest($7::text[]) AS p(pattern) WHERE m.search_text ILIKE p.pattern)::float8 \
+           / cardinality($7::text[])) \
+         + CASE m.outcome_kind WHEN 'success' THEN 0.05 WHEN 'partial' THEN 0.02 ELSE 0.0 END::float8 AS score \
+         FROM memories m WHERE m.removed_at IS NULL \
          AND ($1::text IS NULL OR m.language = $1) \
          AND (cardinality($2::text[]) = 0 OR m.tags && $2) \
          AND ($3::text IS NULL OR m.conditions->'technologies' ? $3) \
          AND (m.search_text ILIKE ANY($7::text[]) OR similarity(m.search_text, $4) > 0.05) \
          AND (m.visibility = 'public' OR ($5::uuid IS NOT NULL AND m.workspace_id = $5 AND m.visibility = 'developer_shared') OR ($6::uuid IS NOT NULL AND m.author_agent_id = $6 AND m.visibility = 'agent_private')) \
-         ORDER BY (similarity(m.search_text, $4) + CASE m.outcome_kind WHEN 'success' THEN 0.05 WHEN 'partial' THEN 0.02 ELSE 0.0 END) DESC, m.created_at DESC LIMIT $8",
+         ORDER BY score DESC, m.created_at DESC LIMIT $8",
     )
     .bind(language).bind(tags).bind(technology).bind(query)
     .bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id)).bind(&patterns).bind(SEARCH_CANDIDATES)
-    .fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
-    Ok(ids)
+    .fetch_all(&state.pool).await?;
+    let minimum = state.thresholds.lexical_min;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<Uuid, _>("id"), row.get::<f64, _>("score")))
+        .filter(|(_, score)| *score >= minimum)
+        .collect())
 }
 
 async fn semantic_candidates(
@@ -1495,9 +1980,9 @@ async fn semantic_candidates(
     tags: &[String],
     technology: Option<&str>,
     agent: Option<&AgentPrincipal>,
-) -> ApiResult<Vec<Uuid>> {
-    let ids = sqlx::query(
-        "SELECT m.id FROM memories m WHERE m.removed_at IS NULL AND m.embedding IS NOT NULL \
+) -> ApiResult<Vec<(Uuid, f64)>> {
+    let rows = sqlx::query(
+        "SELECT m.id, 1 - (m.embedding <=> $6::vector) AS score FROM memories m WHERE m.removed_at IS NULL AND m.embedding IS NOT NULL \
          AND ($1::text IS NULL OR m.language = $1) \
          AND (cardinality($2::text[]) = 0 OR m.tags && $2) \
          AND ($3::text IS NULL OR m.conditions->'technologies' ? $3) \
@@ -1506,16 +1991,21 @@ async fn semantic_candidates(
     )
     .bind(language).bind(tags).bind(technology).bind(agent.map(|value| value.workspace_id)).bind(agent.map(|value| value.agent_id))
     .bind(vector).bind(SEARCH_CANDIDATES)
-    .fetch_all(&state.pool).await?.into_iter().map(|row| row.get("id")).collect();
-    Ok(ids)
+    .fetch_all(&state.pool).await?;
+    let minimum = state.thresholds.semantic_min;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<Uuid, _>("id"), row.get::<f64, _>("score")))
+        .filter(|(_, score)| *score >= minimum)
+        .collect())
 }
 
-fn merge_ranks(lexical: &[Uuid], semantic: &[Uuid], limit: usize) -> Vec<Uuid> {
+fn merge_ranks(lexical: &[(Uuid, f64)], semantic: &[(Uuid, f64)], limit: usize) -> Vec<Uuid> {
     let mut scores: HashMap<Uuid, f64> = HashMap::new();
-    for (index, id) in lexical.iter().enumerate() {
+    for (index, (id, _)) in lexical.iter().enumerate() {
         *scores.entry(*id).or_default() += 1.0 / (RRF_K + index as f64 + 1.0);
     }
-    for (index, id) in semantic.iter().enumerate() {
+    for (index, (id, _)) in semantic.iter().enumerate() {
         *scores.entry(*id).or_default() += 1.0 / (RRF_K + index as f64 + 1.0);
     }
     let mut ranked: Vec<_> = scores.into_iter().collect();

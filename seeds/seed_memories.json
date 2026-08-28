@@ -1,0 +1,200 @@
+[
+  {
+    "problem": "Rust Axum 里 ConnectInfo 拿到的总是 127.0.0.1",
+    "conditions": {"technologies": ["rust", "axum"], "versions": ["axum 0.8"]},
+    "action": "serve 时用 into_make_service_with_connect_info::<SocketAddr>() 替换默认的 into_make_service()，handler 里才能以 ConnectInfo<SocketAddr> 提取对端地址；如果前面有反向代理，还要解析 X-Forwarded-For 并只信任已知代理网段",
+    "outcome": "本地与反代后都能拿到真实客户端地址，限流键不再撞在一起",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["rust", "axum", "networking"]
+  },
+  {
+    "problem": "sqlx 连接池在并发压测下报连接超时",
+    "conditions": {"technologies": ["rust", "sqlx", "postgresql"], "pool": "默认 10 连接"},
+    "action": "压测并发约 30 时 PgPool 开始排队，PoolTimedOut。调大 max_connections 到 20 并检查是否有长事务占住连接不释放",
+    "outcome": "先揪出一段在事务里调外部 HTTP 的代码，把外部调用挪出事务后默认 10 连接就够用了",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["rust", "sqlx", "performance"]
+  },
+  {
+    "problem": "pgvector 检索结果大量不相关",
+    "conditions": {"technologies": ["postgresql", "pgvector"], "model": "bge-m3"},
+    "action": "纯最近邻检索对短查询噪声很大。在 ORDER BY 距离之外加距离阈值截断（经验值：余弦距离 > 1.0 即余弦相似度 < 0.5 直接丢弃），阈值做成环境变量可调",
+    "outcome": "无关结果消失，空结果时明确返回空列表而不是硬凑 top-k",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["postgresql", "pgvector", "search"]
+  },
+  {
+    "problem": "pg_trgm 相似度检索中文效果差",
+    "conditions": {"technologies": ["postgresql", "pg_trgm"], "language": "中文语料"},
+    "action": "中文没有空格分词，整句 similarity 经常失灵。把查询分词后用 ILIKE ANY 匹配分词，再与整句 similarity 取 GREATEST 作为分数，GIN 索引用 gin_trgm_ops 建在 search_text 上",
+    "outcome": "中文短查询（如「限流」）能稳定命中包含该词的记录",
+    "outcome_kind": "partial",
+    "language": "zh-CN",
+    "tags": ["postgresql", "search", "i18n"]
+  },
+  {
+    "problem": "React useEffect 里 setState 导致无限重渲染",
+    "conditions": {"technologies": ["react"], "symptom": "页面卡死后控制台刷 warning"},
+    "action": "依赖数组里放了每次渲染都新建的对象。把对象用 useMemo 固化，或依赖原始值；开发模式下的 StrictMode 双调用是正常现象不要当成 bug 修",
+    "outcome": "重渲染停止；StrictMode 那部分排除后确认是依赖数组引用不稳定",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["react", "debugging"]
+  },
+  {
+    "problem": "AntD Modal 里 Form 拿不到最新值",
+    "conditions": {"technologies": ["react", "antd"], "versions": ["antd 5.x"]},
+    "action": "Modal 未挂载时 form 实例未连接，setFieldsValue 无效。用 Form 用 shouldUnregister={false}，或在 Modal onOpenChange 之后 setFieldsValue，或在 Form initialValues 传值",
+    "outcome": "改为打开弹窗时再 setFieldsValue，问题解决",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["react", "antd"]
+  },
+  {
+    "problem": "Spring Boot @Transactional 同类方法自调用不生效",
+    "conditions": {"technologies": ["java", "spring-boot"], "symptom": "异常后数据仍被提交"},
+    "action": "AOP 代理只拦截外部调用，this.internalMethod() 不走代理。拆到另一个 Bean，或注入自身代理（AopContext.currentProxy()）",
+    "outcome": "拆 Bean 后事务回滚正常",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["java", "spring-boot"]
+  },
+  {
+    "problem": "MyBatis-Plus 分页查询返回了全部数据",
+    "conditions": {"technologies": ["java", "mybatis-plus"]},
+    "action": "忘了注册 PaginationInnerInterceptor，Page 对象只是摆设。加一个 MybatisPlusInterceptor 配置 Bean 并指定数据库类型",
+    "outcome": "SQL 出现 LIMIT，total 正确返回",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["java", "mybatis-plus"]
+  },
+  {
+    "problem": "Docker Compose 服务启动顺序错乱导致连接失败",
+    "conditions": {"technologies": ["docker", "docker-compose"]},
+    "action": "depends_on 不带 condition 只管启动顺序不管就绪。给数据库加 healthcheck（pg_isready），依赖方用 condition: service_healthy",
+    "outcome": "应用启动时数据库必然就绪，不再随机 Connection refused",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["docker", "devops"]
+  },
+  {
+    "problem": "Docker 容器内访问宿主机服务被拒绝",
+    "conditions": {"technologies": ["docker"], "os": "macOS / Windows"},
+    "action": "容器里 localhost 是容器自己。macOS/Windows 用 host.docker.internal，Linux 用 --add-host=host.docker.internal:host-gateway",
+    "outcome": "容器内成功连上宿主机 PostgreSQL",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["docker", "networking"]
+  },
+  {
+    "problem": "Playwright 无头模式下按钮点击无反应",
+    "conditions": {"technologies": ["playwright"], "symptom": "有头模式正常"},
+    "action": "元素被固定定位遮挡。用 page.locator().click({ force: true }) 前先试 expect(locator).toBeVisible() 等待真渲染完成，多数情况是动画未结束就点了",
+    "outcome": "用 waitFor + 显式等待代替 sleep，稳定性显著提升",
+    "outcome_kind": "partial",
+    "language": "zh-CN",
+    "tags": ["playwright", "testing"]
+  },
+  {
+    "problem": "Git rebase 冲突处理到一半想放弃",
+    "conditions": {"technologies": ["git"]},
+    "action": "git rebase --abort 回到 rebase 前状态。进行中想换策略：abort 后改用 merge 或分批 rebase（按提交逐个）",
+    "outcome": "abort 没有丢失任何本地提交，改用逐提交 rebase 完成",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["git"]
+  },
+  {
+    "problem": "JWT 一到测试环境就 401",
+    "conditions": {"technologies": ["jwt", "spring-security"], "symptom": "本地正常"},
+    "action": "两台机器时钟差 40 秒，exp 校验失败。校验侧加 60 秒 clock skew 容忍（jwt 库的 leeway 参数）",
+    "outcome": "加 leeway 60s 后稳定",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["jwt", "auth"]
+  },
+  {
+    "problem": "自定义 CORS 请求头触发预检失败",
+    "conditions": {"technologies": ["http", "cors"]},
+    "action": "浏览器对非简单头（如 X-Api-Version）发 OPTIONS 预检，服务端必须响应允许该头。CorsLayer 的 allow_headers 要列全自定义头，别只放行 Authorization/Content-Type",
+    "outcome": "补全 allow_headers 后预检通过",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["http", "cors"]
+  },
+  {
+    "problem": "Nginx 上传文件返回 413",
+    "conditions": {"technologies": ["nginx"], "symptom": "本地直连后端正常"},
+    "action": "反代层的 client_max_body_size 默认 1m，比后端限制更严。按后端实际接受的上限同步调整（如 2m），过大是 DoS 面",
+    "outcome": "调到与后端一致后上传恢复",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["nginx", "devops"]
+  },
+  {
+    "problem": "API Token 出现在 URL 查询参数里被日志收集",
+    "conditions": {"technologies": ["security"], "impact": "凭证泄露"},
+    "action": "凭证只放 Authorization 头，永不出现在 URL；日志中间件对 query 做脱敏或干脆不记 query；泄露后立即支持轮换（revoke + reissue）",
+    "outcome": "轮换机制上线，历史泄露面收敛到 14 天日志保留期内",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["security", "logging"]
+  },
+  {
+    "problem": "LLM Agent 检索增强时被文档里的指令注入",
+    "conditions": {"technologies": ["llm", "rag"], "attack": "检索内容含「忽略以上指令」"},
+    "action": "检索内容永远当数据不当指令：接口返回 untrusted_content 标记，系统提示明确区分 retrieved data 与 instructions，且工具调用权限不因检索内容改变",
+    "outcome": "注入样本不再触发越权行为",
+    "outcome_kind": "partial",
+    "language": "zh-CN",
+    "tags": ["llm", "security", "rag"]
+  },
+  {
+    "problem": "Embedding 维度不一致导致写入报错",
+    "conditions": {"technologies": ["pgvector", "llm"], "symptom": "dimension mismatch"},
+    "action": "切换 embedding 模型（如 text-embedding-3-small 1536 维换 bge-m3 1024 维）后旧向量不兼容。入库前统一维度校验，换模型必须重刷全量 embedding",
+    "outcome": "加运行时维度校验后提前失败，避免半新半旧数据",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["pgvector", "llm", "data"]
+  },
+  {
+    "problem": "reqwest 高并发下偶发连接重置",
+    "conditions": {"technologies": ["rust", "reqwest"]},
+    "action": "默认连接池对同一 host 无 keep-alive 复用上限管理，长跑进程遇上游主动断连。Client 构造时显式设置 pool_idle_timeout 与 pool_max_idle_per_host",
+    "outcome": "ECONNRESET 消失，连接数稳定",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["rust", "http"]
+  },
+  {
+    "problem": "Argon2 密码校验把 CPU 打满",
+    "conditions": {"technologies": ["rust", "argon2"], "scenario": "登录接口"},
+    "action": "默认 Argon2id 参数是安全但昂贵的。登录路径用默认参数没问题，问题在单元测试里跑了上百次 verify——测试用弱参数，生产保持默认",
+    "outcome": "测试时长从 40s 降到 2s，生产参数不变",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["rust", "auth", "performance"]
+  },
+  {
+    "problem": "Webhook 验签一直失败",
+    "conditions": {"technologies": ["security", "http"]},
+    "action": "HMAC 校验必须用原始请求体字节，不能先 JSON 反序列化再转字符串（字段顺序和空白会变）。中间件层先把 body bytes 缓存下来再给验签和业务两层用",
+    "outcome": "改用原始字节后验签通过",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["security", "webhook"]
+  },
+  {
+    "problem": "Node 定时任务在服务器重启后全部丢失",
+    "conditions": {"technologies": ["node", "devops"], "scenario": "内存里的 setInterval"},
+    "action": "进程内定时器不持久化。要么外部 cron 拉起（systemd timer / k8s CronJob），要么数据库存下次执行时间轮询补偿",
+    "outcome": "改 systemd timer 后重启自愈",
+    "outcome_kind": "success",
+    "language": "zh-CN",
+    "tags": ["node", "devops", "scheduling"]
+  }
+]

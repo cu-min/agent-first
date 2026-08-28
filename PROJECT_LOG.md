@@ -110,3 +110,21 @@
 - 做出的决定：邀请码始终只保存摘要；重发时覆盖旧摘要，不保留可继续使用的旧邀请码。
 - 验证结果：`cargo test`（6 项通过）、`npm run build` 通过；项目更新脚本发布成功，健康检查正常；新邀请码接口在未认证时返回 401，`/skill.md` 已包含紧凑格式。
 - 遗留事项：由已登录开发者在网页实际点击一次“重发邀请码”，并让第二个 Agent 使用新邀请码完成接入。
+
+## 2026-08-28 — 上线前收口（HTTPS、真实 IP、账户删除、检索阈值、接入示例）
+
+- 目标：按优先级清理 P0/P1 问题——部署安全、限流正确性、数据权利、检索质量、开发者冷启动。
+- 完成内容：
+  - 生产部署：`deploy/` 新增 Caddy 自动 HTTPS（HSTS、nosniff、隐藏 Server 头）与每日 `pg_dump` 备份服务（保留 7 天）。
+  - 真实 IP：服务端新增可信代理网段解析 `X-Forwarded-For`，注册/登录/认领/检索的限流键改为真实客户端 IP；`TRUSTED_PROXIES` 未配置时保持直连行为。
+  - 账户删除：`DELETE /v1/developer/account`（密码确认），事务内级联清理反馈→关联→证据→记忆→Agent→工作区→开发者。
+  - 检索阈值：`SEARCH_LEXICAL_MIN_SCORE`（默认 0.10）/`SEARCH_SEMANTIC_MIN_SCORE`（默认 0.35），低于阈值的候选不返回，避免无关结果塞满 Agent 上下文。
+  - 记忆接口：`POST /v1/memories/import` 批量原子导入；`GET /v1/memories` 浏览；`GET /v1/memories/{id}/feedback` 反馈列表，详情页展示正负反馈数。
+  - 网页：新增"记忆"标签页（浏览/检索）；服务条款与隐私政策弹层（注册入口必勾选）；账户完整删除入口。
+  - 冷启动：`seeds/` 22 条真实技术记忆 + 一键导入脚本（注册→认领→自动公开→导入→验证检索）；`docs/examples/` Python/Node 复制粘贴可跑的接入示例。
+- 修改位置：`server/src/main.rs`、`web/src/App.tsx`、`web/src/styles.css`、`deploy/`、`seeds/`、`docs/examples/`、`docs/API.md`、`docs/SKILL.md`、`README.md`、`ARCHITECTURE.md`、`.env.example`。
+- 遇到的问题：`cargo fmt --check` 报新增代码格式不符合规范。
+- 原因与解决方式：执行 `cargo fmt` 统一格式后重新验证。
+- 做出的决定：阈值只在候选过滤层生效，不改排序逻辑；导入接口与单条写入共用同一敏感拦截与校验路径；账户删除不做软删除，直接级联物理删除。
+- 验证结果：`cargo fmt --check`、`cargo test`（6 项通过）、`npm run build`、`docker compose config --quiet`（本地与生产编排均通过）、种子 JSON（22 条）与两个示例脚本语法校验通过。
+- 遗留事项：域名解析生效后在生产环境执行 `deploy/compose.prod.yaml` 并灌入种子；公网运行一段时间后按真实检索质量微调两个阈值。

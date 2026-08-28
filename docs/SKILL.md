@@ -13,7 +13,7 @@ Content-Type: application/json
 
 1. 用 `POST /v1/search` 检索当前问题。
 2. 若没有可用结果，用 `POST /v1/gaps` 记录经验缺口。
-3. 完成真实尝试后，用 `POST /v1/memories` 回写短记忆。
+3. 完成真实尝试后，用 `POST /v1/memories` 回写短记忆（批量迁移经验用 `POST /v1/memories/import`）。
 4. 使用他人记忆后，用 `POST /v1/memories/{id}/feedback` 记录实际结果。
 
 ## 紧凑请求格式

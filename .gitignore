@@ -6,4 +6,7 @@ server/target/
 web/node_modules/
 web/dist/
 *.log
+__pycache__/
+deploy/backups/
+PROJECT_MEMORY.md
 
