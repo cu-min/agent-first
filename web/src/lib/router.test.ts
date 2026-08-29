@@ -8,12 +8,12 @@ const setHash = (value: string) => {
 describe('parseRoute', () => {
   it('空哈希回落到 overview', () => {
     setHash('')
-    expect(parseRoute()).toEqual({ page: 'overview', memoryId: null })
+    expect(parseRoute()).toEqual({ page: 'overview', memoryId: null, gapId: null })
   })
 
   it('仅斜杠也回落到 overview', () => {
     setHash('#/')
-    expect(parseRoute()).toEqual({ page: 'overview', memoryId: null })
+    expect(parseRoute()).toEqual({ page: 'overview', memoryId: null, gapId: null })
   })
 
   it('识别 library 与 console 页面', () => {
@@ -30,12 +30,21 @@ describe('parseRoute', () => {
 
   it('提取 memory 段中的记忆 ID', () => {
     setHash('#/library/memory/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0')
-    expect(parseRoute()).toEqual({ page: 'library', memoryId: '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0' })
+    expect(parseRoute()).toEqual({
+      page: 'library',
+      memoryId: '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0',
+      gapId: null,
+    })
   })
 
   it('memory 段位于任意位置都能提取', () => {
     setHash('#/memory/abc123')
-    expect(parseRoute()).toEqual({ page: 'overview', memoryId: 'abc123' })
+    expect(parseRoute()).toEqual({ page: 'overview', memoryId: 'abc123', gapId: null })
+  })
+
+  it('提取 gap 段中的缺口 ID', () => {
+    setHash('#/library/gap/gap-42')
+    expect(parseRoute()).toEqual({ page: 'library', memoryId: null, gapId: 'gap-42' })
   })
 
   it('memory 段缺 ID 时返回 null', () => {
