@@ -515,6 +515,8 @@ pub(crate) struct ListMemoriesQuery {
     pub(crate) since: Option<String>,
     pub(crate) until: Option<String>,
     pub(crate) order_by: Option<String>,
+    /// 开发者控制台按 Agent 过滤；仅在开发者作用域下生效（受 w.developer_id 约束）
+    pub(crate) agent_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]

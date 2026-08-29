@@ -205,6 +205,10 @@ pub(crate) async fn list_memories(
                 "w.developer_id = $1".to_string(),
             ];
             let mut param_idx = 2;
+            if query.agent_id.is_some() {
+                conditions.push(format!("m.author_agent_id = ${}", param_idx));
+                param_idx += 1;
+            }
             if let Some(_v) = vis_filter {
                 conditions.push(format!("m.visibility = ${}", param_idx));
                 param_idx += 1;
@@ -237,6 +241,10 @@ pub(crate) async fn list_memories(
             let mut total_query =
                 sqlx::query_scalar::<_, i64>(&total_sql).bind(developer.developer_id);
             let mut ids_query = sqlx::query(&ids_sql).bind(developer.developer_id);
+            if let Some(agent_id) = query.agent_id {
+                total_query = total_query.bind(agent_id);
+                ids_query = ids_query.bind(agent_id);
+            }
             if let Some(v) = vis_filter {
                 total_query = total_query.bind(v);
                 ids_query = ids_query.bind(v);

@@ -262,15 +262,31 @@ input:focus, select:focus { border-color: var(--acc); }
 .handoff-sheet .submit-btn { margin-top: 18px; }
 
 /* Agent 列表行 */
-.agent-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-top: 1px solid var(--line); }
+.agent-row { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--line); }
 .agent-row:first-of-type { border-top: 0; }
+.agent-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; border-radius: 10px; padding: 13px 12px; margin: 3px 0; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background .15s; }
+.agent-open:hover { background: var(--bg); }
 .agent-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .agent-name { font-family: var(--serif); font-size: 15.5px; font-weight: 700; overflow-wrap: anywhere; }
 .agent-stats { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.agent-chevron { flex: none; color: var(--line); font-size: 19px; line-height: 1; transition: color .15s, transform .15s; }
+.agent-open:hover .agent-chevron { color: var(--acc); transform: translateX(2px); }
 .agent-row input { flex: 1; padding: 9px 12px; font-size: 14px; }
-.panel form.agent-row { display: flex; align-items: center; gap: 12px; }
+.panel form.agent-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; }
 .agent-row.editing, .agent-row.adding { align-items: center; }
 .inline-actions { display: flex; gap: 14px; flex: none; }
+
+/* Agent 详情弹窗 */
+.agent-detail-name { font-family: var(--serif); font-size: 24px; margin: 4px 0 0; overflow-wrap: anywhere; }
+.agent-meta { font-family: var(--mono); font-size: 12px; color: var(--dim); margin: 10px 0 16px; }
+.agent-meta .dot { margin: 0 8px; color: var(--line); }
+.agent-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.agent-chip { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 5px 14px; font-size: 12px; color: var(--ink2); }
+.agent-chip b { font-family: var(--serif); font-size: 17px; color: var(--ink); font-weight: 700; }
+.agent-records-title { font-family: var(--serif); font-size: 16px; margin: 24px 0 12px; padding-top: 18px; border-top: 1px solid var(--line); }
+.agent-records { display: grid; gap: 10px; }
+.agent-records .memory-card { margin: 0; }
+.agent-more { margin-top: 14px; text-align: center; font-size: 12px; }
 
 /* ⋯ 行内菜单 */
 .row-menu { position: relative; flex: none; }

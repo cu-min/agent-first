@@ -1,25 +1,24 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api, AgentRegistration, DeveloperSession, relTime, resultText, Overview } from '../lib/api'
 import { ConfirmOptions, SecretValue } from '../components/ui'
-import { navigate } from '../lib/router'
+import AgentDetailModal from './AgentDetailModal'
 import { checkPassword } from '../lib/password'
 
 type AccessMode = 'register' | 'login' | 'claim'
 type HandoffSecrets = { heading: string; agentKey?: string; agentName?: string; claimCode?: string; inviteCode?: string }
 
-export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm }: {
+export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm, openMemory }: {
   token: string
   onAuth: (token: string) => void
   onLogout: () => void
   onToast: (text: string, kind?: 'info' | 'error') => void
   confirm: (options: ConfirmOptions) => Promise<boolean>
+  openMemory: (id: string) => void
 }) {
   const [accessMode, setAccessMode] = useState<AccessMode>('register')
   const [overview, setOverview] = useState<Overview | null>(null)
   const [handoff, setHandoff] = useState<HandoffSecrets | null>(null)
-  const [removeId, setRemoveId] = useState('')
-  const [deletePassword, setDeletePassword] = useState('')
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [detailAgent, setDetailAgent] = useState<Overview['agents'][number] | null>(null)
   const [loading, setLoading] = useState(false)
   const [editingAgent, setEditingAgent] = useState<{ id: string; name: string } | null>(null)
   const [addingAgent, setAddingAgent] = useState(false)
@@ -188,27 +187,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
     finally { setBusyId('') }
   }
 
-  const removeMemory = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!removeId) return
-    if (!await confirm({ title: '移除敏感记录', message: '将清除这条记忆、证据与反馈内容，保留无内容的删除记录。此操作不可撤销，确认继续？', confirmLabel: '移除内容', danger: true })) return
-    try { await api(`/v1/memories/${removeId}/remove`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); setRemoveId(''); onToast('敏感内容已移除。'); await loadOverview() }
-    catch (error) { onToast(error instanceof Error ? error.message : '删除失败', 'error') }
-  }
-
-  const deleteAccount = async (event: FormEvent) => {
-    event.preventDefault()
-    if (deleteConfirmText !== 'DELETE') { onToast('请在确认框输入 DELETE 后再提交。', 'error'); return }
-    if (!await confirm({ title: '永久删除账号', message: '将永久删除账号、全部工作区、Agent、记忆与反馈，立即生效且无法恢复。真的要继续吗？', confirmLabel: '永久删除', danger: true })) return
-    try {
-      await api('/v1/developer/account', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ password: deletePassword, confirmation: deleteConfirmText }) })
-      setDeletePassword(''); setDeleteConfirmText(''); setOverview(null); setHandoff(null)
-      onLogout()
-      navigate('overview')
-      onToast('账号与全部数据已删除。')
-    } catch (error) { onToast(error instanceof Error ? error.message : '删除失败', 'error') }
-  }
-
   const agentStats = (agent: Overview['agents'][number]) => [
     `经验 ${agent.memory_count}`,
     `公开 ${agent.public_count}`,
@@ -279,7 +257,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
           <header className="console-head">
             <div>
               {index === 0 && <p className="kicker"><i></i>Console</p>}
-              <h1>{workspace.name}</h1>
+              <h1>我的工作区</h1>
               <p className="console-sub">
                 <button type="button" className="switch" role="switch" aria-checked={auto} aria-label="公开策略" onClick={() => void updatePolicy(workspace.id, auto ? 'manual' : 'auto')}>
                   <span className="knob" />
@@ -320,13 +298,17 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
                   </div>
                 </form>
               : <div className="agent-row" key={agent.id}>
-                  <div className="agent-main">
-                    <span className="agent-name">{agent.name}</span>
-                    <span className="agent-stats">{agentStats(agent)} · 创建于 {relTime(agent.created_at)}</span>
-                  </div>
+                  <button type="button" className="agent-open" onClick={() => setDetailAgent(agent)} title={`查看 ${agent.name} 的详情与记录`}>
+                    <span className="agent-main">
+                      <span className="agent-name">{agent.name}</span>
+                      <span className="agent-stats">{agentStats(agent)} · 创建于 {relTime(agent.created_at)}</span>
+                    </span>
+                    <span className="agent-chevron" aria-hidden="true">›</span>
+                  </button>
                   <details className="row-menu">
                     <summary aria-label={`${agent.name} 的操作`}>⋯</summary>
                     <div className="menu-pop" role="menu">
+                      <button type="button" role="menuitem" onClick={() => setDetailAgent(agent)}>查看详情</button>
                       <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => setEditingAgent({ id: agent.id, name: agent.name })}>改名</button>
                       <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => void rotateAgentKey(agent.id, agent.name)}>{busyId === agent.id ? '处理中…' : '重发密钥'}</button>
                     </div>
@@ -356,8 +338,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
         </div>
       </details>
 
-      <details className="advanced"><summary>高级：移除一条敏感记录</summary><p>输入记忆 ID 后，系统会清除其内容、证据和反馈。请只在泄露敏感内容时使用。</p><form onSubmit={removeMemory}><label>记忆 ID<input value={removeId} onChange={event => setRemoveId(event.target.value)} required /></label><button className="submit-btn danger">移除敏感内容</button></form></details>
-      <details className="advanced"><summary>危险区：删除整个账号</summary><p>永久删除账号、全部工作区、Agent、记忆、证据、反馈与缺口，立即生效且无法恢复。需输入登录密码并在确认框填写 DELETE。</p><form onSubmit={deleteAccount}><label>登录密码<input type="password" value={deletePassword} onChange={event => setDeletePassword(event.target.value)} required /></label><label>输入 DELETE 确认<input value={deleteConfirmText} onChange={event => setDeleteConfirmText(event.target.value)} placeholder="DELETE" required /></label><button className="submit-btn danger">永久删除账号与全部数据</button></form></details>
+      {detailAgent && <AgentDetailModal agent={detailAgent} token={token} onClose={() => setDetailAgent(null)} openMemory={openMemory} />}
     </section>}
   </>
 }

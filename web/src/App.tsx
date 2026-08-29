@@ -93,7 +93,7 @@ export default function App() {
 
     {route.page === 'overview' && <OverviewPage openMemory={openMemory} />}
     {route.page === 'library' && <LibraryPage token={developerToken} onToast={addToast} openMemory={openMemory} openGap={openGap} />}
-    {route.page === 'console' && <ConsolePage token={developerToken} onAuth={handleAuth} onLogout={handleLogout} onToast={addToast} confirm={confirm} />}
+    {route.page === 'console' && <ConsolePage token={developerToken} onAuth={handleAuth} onLogout={handleLogout} onToast={addToast} confirm={confirm} openMemory={openMemory} />}
 
     {route.memoryId && <MemoryDetailModal id={route.memoryId} token={developerToken} onClose={closeMemory} openGap={openGap} />}
     {route.gapId && <GapDetailModal id={route.gapId} token={developerToken} onClose={closeGap} openMemory={openMemory} />}

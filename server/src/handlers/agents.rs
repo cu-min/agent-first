@@ -58,7 +58,7 @@ pub(crate) async fn register_agent(
         let claim_token = security::new_token("af_claim");
         sqlx::query("INSERT INTO workspaces (id, name, claim_token_hash) VALUES ($1, $2, $3)")
             .bind(workspace_id)
-            .bind(format!("{} 的工作区", input.name.trim()))
+            .bind("我的工作区")
             .bind(security::hash_token(&claim_token))
             .execute(&mut *transaction)
             .await?;
