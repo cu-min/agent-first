@@ -45,6 +45,29 @@
 
 ## 变更记录
 
+### 2026-08-29（上线前数据就绪分析：修 2 个 P0 检索/列表 bug + 写入闭环实测）
+
+**P0 bug 修复（提交 `ca74899`，不修则上线即事故）**
+- 列表接口间歇性 500（约 1/3 请求，并发下随连接池轮转呈严格交替）：`list_public_memories`/`list_memories` 的 count 查询错误 bind 了 limit/offset，而 `public_overview` 用**相同 SQL 字符串**但零 bind；sqlx 语句缓存按连接按 SQL 字符串索引且不校验 bind 数，两个版本分别被不同连接缓存后 bind 数不匹配报 `bind message supplies N parameters, but prepared statement requires M`。修复：count 查询移除多余 bind
+- `order_by=reuse/feedback/evidence` 100% 必 500：直接引用 `agent_positive_feedback` 等列，但这些是 `fetch_memory_summaries` JOIN 计算的统计值而非 memories 物理列。修复：排序改用关联子查询
+- 验证：修复后 350 次全参数组合并发压测全部 200；cargo test 57 单测 + 8 集成测试通过
+- 教训：**sqlx 运行时查询中，同一 SQL 字符串在任何调用点必须保持 bind 签名一致**；统计型排序列不存在于物理表
+
+**写入路径端到端实测（真实亲历沉淀，非合成数据）**
+- 注册 Agent `trae-dev-agent`（自建工作区）→ 记录 2 个真实 gap → 写入 2 条亲历记忆（sqlx bind 冲突、cargo test 文件锁，后者 gap_id 关联形成闭环）→ 带 key 检索 Top-1 命中回验，全链路 200
+- api_key/claim_token 存 `research/_agent_key.json`（research/ 已 gitignore）；该工作区未认领，两条记忆 request_public 待认领后审核发布
+- 新增 gap：词法路径 token 子串匹配泄漏（见下）
+
+**读路径质量实测（公开语料 31 条 + 私有 2 条）**
+- 语料内查询 Top-1 精准：7/7（JWT 401/pydantic/minikube/Argon2/sqlx/cargo test/Webhook 验签全部第一位命中，含当天新写入）
+- 具体无关中文查询（红烧肉/电影/育儿）老实返回 0 条，"宁可空手"原则生效
+- **已知缺陷（gap `c3c9d649`）**：英文/抽象无关查询（how to train my dog / 古希腊哲学）泄漏 4-5 条弱相关。根因在词法路径非语义路径：token 按 `%token%` ILIKE 子串匹配，英文短功能词（to/my/a）命中几乎所有文本，单 token 命中即得 1/n 分 + 0.05 outcome 加成过线；语义阈值 0.35→0.6 均无效。修复需中英文分词设计（中文要子串语义，英文要词边界）
+- 阈值实验结论：语义 0.35→0.5 可修中文抽象泄漏且实测不掉召回（`.env` 中两行注释即开关）；英文泄漏需修 tokenize/匹配逻辑
+
+**上线数据就绪判定**
+- 公开语料 31 条：22 zh 用户种子 + 9 en SO 蒸馏；28 success / 3 partial / **0 failure**；0 条复用反馈；领域集中在 Web 全栈（TS/Rust/React/Docker/安全）
+- 判定：功能层面可上线（读写闭环均验证通过）；数据层面以"真实小语料、靠使用增长"的姿态启动。短板不在数量而在分布——失败经验与复用反馈缺失，但这两者只能靠真实使用产生（604 条合成数据的教训）
+
 ### 2026-08-29（检索粒度参数上线 + SKILL.md 全面重写）
 - `POST /v1/search` 新增可选 `detail` 参数：不传或 `fingerprint`（默认）返回轻量指纹**不含 action**；`"full"` 返回完整摘要含 action。检索逻辑（双路召回/RRF/top-K/阈值过滤）完全未动
 - 后端实现：`SearchInput` 增加 `SearchDetail` 枚举（serde 小写、默认 Fingerprint）；新增 `SearchHit` 结构（action 为 `Option` + `skip_serializing_if`），`SearchOutput.items` 从 `Vec<MemorySummary>` 改为 `Vec<SearchHit>`；`fetch_memory_summaries` 未动，映射在 handler 层完成
@@ -81,6 +104,13 @@
 ---
 
 ## 踩坑记录
+
+### sqlx 同一 SQL 字符串不同 bind 数 → 间歇性 500（排查耗时最长）
+- **现象**：`GET /v1/public/memories` 严格交替 500/200（F,S,F,S...），并发下约 1/3 失败；`POST /v1/search` 完全正常
+- **原因**：sqlx 预处理语句缓存按**连接**、按 **SQL 字符串**索引，**不校验 bind 数**。`public_overview` 与 `list_public_memories` 的 count SQL 字符串完全相同但 bind 数不同（0 vs 2），哪个版本先被某连接缓存，后到的另一种调用在该连接上必报 `bind message supplies N parameters, but prepared statement requires M`
+- **排查要点**：单进程内严格交替 = 连接池轮转 + 单个坏连接；顺序请求难复现（连接复用单一），**并发混合压测两个接口**才稳定复现；抓 stderr 日志（重启时务必用 RedirectStandardError，裸 Start-Process 的 stderr 会丢）
+- **解决方案**：count 查询移除 limit/offset 多余 bind；铁律是同一 SQL 字符串所有调用点 bind 签名一致
+- **规避方式**：写运行时 sqlx 查询时自查"这条 SQL 字符串别处是否也用了"；review 时对 format! 拼出的 SQL 特别警惕
 
 ### 改了 SKILL.md 但线上 /skill.md 不更新
 - **现象**：编辑 `docs/SKILL.md` 后请求 `GET /skill.md` 仍返回旧内容
