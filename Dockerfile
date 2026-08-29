@@ -7,19 +7,23 @@ RUN npm run build
 
 FROM rust:1.97-bookworm AS server-builder
 WORKDIR /app
+COPY cargo-mirror.toml /usr/local/cargo/config.toml
 COPY server/ ./server/
 COPY migrations/ ./migrations/
+COPY docs/ ./docs/
 WORKDIR /app/server
-RUN cargo build --release
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/server/target \
+    cargo build --release && \
+    cp target/release/agent-first /usr/local/bin/agent-first
 
 FROM debian:bookworm-slim
 RUN useradd --system --create-home agentfirst
 WORKDIR /app
-COPY --from=server-builder /app/server/target/release/agent-first /usr/local/bin/agent-first
+COPY --from=server-builder /usr/local/bin/agent-first /usr/local/bin/agent-first
 COPY --from=web-builder /web/dist ./web
 ENV BIND_ADDR=0.0.0.0:8080
 ENV STATIC_DIR=/app/web
 EXPOSE 8080
 USER agentfirst
 CMD ["agent-first"]
-

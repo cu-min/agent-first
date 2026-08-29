@@ -8,7 +8,6 @@ web/node_modules/
 web/dist/
 deploy/
 backups/
-docs/
 research/
 seeds/
 $dest/
