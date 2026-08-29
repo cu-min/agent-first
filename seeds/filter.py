@@ -93,13 +93,21 @@ def check_format(item: dict, idx: int = 0) -> tuple[bool, list[str]]:
     return len(issues) == 0, issues
 
 
+def effective_length(text: str) -> int:
+    """信息量折算长度：CJK 字符计 2（1 个汉字 ≈ 1 个英文词），英文按 1。
+
+    评分长度项按英文校准，中文原文需折算才与英文条目同权。
+    """
+    return sum(2 if '\u4e00' <= ch <= '\u9fff' else 1 for ch in text)
+
+
 def quality_score(item: dict) -> tuple[float, dict]:
     """质量评分 (0-100)，返回 (分数, 各维度详情)。"""
     scores = {}
 
     # problem 质量 (20分)
     p = item.get("problem", "")
-    scores["problem"] = min(20, len(p) * 0.3)  # 越长越详细，但有上限
+    scores["problem"] = min(20, effective_length(p) * 0.3)  # 越长越详细，但有上限
     symptom_words = ["报错", "失败", "异常", "卡住", "超时", "返回", "无法",
                      "error", "fail", "crash", "timeout", "exception", "cannot", "can't", "not working"]
     if any(t in p.lower() for t in symptom_words):
@@ -119,7 +127,7 @@ def quality_score(item: dict) -> tuple[float, dict]:
 
     # action 可操作性 (30分)
     a = item.get("action", "")
-    scores["action"] = min(20, len(a) * 0.05)  # 长度基础分
+    scores["action"] = min(20, effective_length(a) * 0.05)  # 长度基础分
     # 有具体技术细节加分（中英）
     action_keywords = ["修改", "添加", "删除", "配置", "设置", "改为", "使用", "调用", "注册", "创建",
                        "函数", "参数", "配置", "命令", "脚本", "接口", "属性", "方法", "类", "文件",
@@ -131,7 +139,7 @@ def quality_score(item: dict) -> tuple[float, dict]:
 
     # outcome 验证闭环 (15分)
     o = item.get("outcome", "")
-    scores["outcome"] = min(10, len(o) * 0.05)
+    scores["outcome"] = min(10, effective_length(o) * 0.05)
     outcome_keywords = ["解决", "恢复", "正常", "稳定", "通过", "成功", "消失", "下降", "提升", "减少",
                         "resolved", "fixed", "works", "solved", "success"]
     if any(k in o.lower() for k in outcome_keywords):

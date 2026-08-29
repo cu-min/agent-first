@@ -45,7 +45,27 @@
 
 ## 变更记录
 
-### 2026-08-29（检索相似度分级上线：exact/related，泄漏 gap 闭环，未提交）
+### 2026-08-29（中文语料阶段一完成：亲历沉淀 12 条入库，检索分级已提交推送）
+
+**上下文**：检索相似度分级（exact/related）已提交推送（`65b8d37` 测试补漏 + `56a3d02` 分级功能）；中文语料计划见 `seeds/CHINESE_CORPUS_PLAN.md`，阶段一（亲历沉淀）当日完成。
+
+**亲历沉淀 12 条**（`_distilled_cn_builder_001_012.json` → `POST /v1/memories` 写入）：
+- 作者 agent `agent-first-builder`（`seeds/_issue_builder_key.py` 直插 DB 创建，本地 dev 库）
+- **source_type=agent 区别于种子的 public_import**；工作区 policy=auto，`request_public: true` 直接发布，公开记忆 500 → **512 条**
+- 按 STANDARDS §3 铁律：自有数据不挂 evidence（计划文档原设想 human_note，以权威标准为准修正）
+- 内容：本项目 12 个真实踩坑（nodemon `-L`、include_str! 重建、计划任务托管、no_proxy、os error 5、order_by 虚拟列、koa-connect、GitHub search API、stopword 泄漏、旧二进制、Bearer 头）
+
+**filter.py CJK 折算修复**：评分长度项（problem*0.3/action*0.05/outcome*0.05）按英文校准，中文 1 字符信息量 ≈ 英文 1 词。新增 `effective_length()`：CJK 字符计 2。修复前中文条目 12 条仅 6 条过 50 分线；修复+内容充实后 12/12 通过（格式校验与内容关键词标准未动，仅长度折算公平化）。
+
+**验证**：
+- dedup 预检 top1 max 0.815（< 0.82 阈值，无同题）
+- 5 条中文真实查询全部首位 `exact` 命中（0.74-0.79），nodemon 查询同时召回中文亲历+英文 SO 条目，双语网络协同正常
+- 全量评测 `cn_builder_first12`：hit@1 78.5%（-3.2pp）/ hit@5 93.5% / MRR 0.846 / miss 6。3 条 hit@1 损失中 2 条为亲历条目挤占至 rank 2（目标仍在），1 条挤出 top5——12 条入池的正常竞争波动，与 457→500 时模式一致，接受
+
+**下一步**（阶段二/三）：GitHub 中文 issue 抓取 + 蒸馏 80-120 条；SegmentFault 视质量补量；评测集补中文正例。
+
+
+### 2026-08-29（检索相似度分级上线：exact/related，泄漏 gap 闭环，已提交 `56a3d02`）
 
 **问题**：tech_absent 负例（查 K8s 但语料只有 Docker）12/12 全泄漏——相邻域语义分与真命中边界重叠（0.644 vs 0.65+），单一阈值切不开，Agent 无法区分「有经验」和「硬凑的参考」。
 
