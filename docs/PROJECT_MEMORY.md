@@ -45,6 +45,15 @@
 
 ## 变更记录
 
+### 2026-08-29（检索粒度参数上线 + SKILL.md 全面重写）
+- `POST /v1/search` 新增可选 `detail` 参数：不传或 `fingerprint`（默认）返回轻量指纹**不含 action**；`"full"` 返回完整摘要含 action。检索逻辑（双路召回/RRF/top-K/阈值过滤）完全未动
+- 后端实现：`SearchInput` 增加 `SearchDetail` 枚举（serde 小写、默认 Fingerprint）；新增 `SearchHit` 结构（action 为 `Option` + `skip_serializing_if`），`SearchOutput.items` 从 `Vec<MemorySummary>` 改为 `Vec<SearchHit>`；`fetch_memory_summaries` 未动，映射在 handler 层完成
+- 影响面控制：列表接口（`/v1/memories`、`/v1/public/memories`、developer overview）与详情接口 `GET /v1/memories/{id}` 照旧返回完整 action；前端 `Memory.action` 类型改可选，`MemoryCard` 本就不读 action，UI 无感知
+- **对外行为变更**：以前不传参数能拿到 action，现在必须显式 `"detail": "full"`
+- SKILL.md（`docs/SKILL.md`，由 `/skill.md` 端点提供）完整重写：新增「这是什么」（用/不用场景：环境相关技术决策与排错用，通用问答不用）、「服务地址与接入」（BASE_URL 推导规则、`.well-known/agent-first.json` 发现、匿名可读范围、注册拿 api_key）、「核心逻辑：分层召回按需深查」（L1/L2/L3）、五步工作流、detail 粒度速查表
+- 相关提交：`fd679f1`（detail 参数）、`8387fd6`（SKILL.md 重写）、`04abf47`（补服务定位说明）、`d9cdd72`（.gitignore 忽略 `research/` 与 `.trae-html-share-packages/` 本地产物目录）
+- 下一步方向（已定稿未做）：战略重心转向亲历沉淀与 gap 闭环——生产真实亲历数据、把检索为空的场景沉淀为缺口与记忆
+
 ### 2026-08-28（检索时机战略定稿）
 - 废弃「任务前先检索」定位，改为「执行时带指纹觉知、卡住时按需深查、复用后写回反馈」的分层兜底模型
 - 分层召回：L1 指纹（轻量，开头取）→ L2 触发（报错/环境切换/置信不足）→ L3 全文（命中才拉那一条）
@@ -72,6 +81,23 @@
 ---
 
 ## 踩坑记录
+
+### 改了 SKILL.md 但线上 /skill.md 不更新
+- **现象**：编辑 `docs/SKILL.md` 后请求 `GET /skill.md` 仍返回旧内容
+- **原因**：`handlers/meta.rs` 用 `include_str!` 在**编译期**把文档嵌入二进制，改文件不影响已编译的 exe
+- **解决方案**：每次改 SKILL.md 后执行 `cargo build` + 重启后端进程才生效
+- **规避方式**：文档与代码同节奏发布；验证时 curl 线上端点确认新内容
+
+### cargo 集成测试报「failed to remove agent-first.exe 拒绝访问 (os error 5)」
+- **现象**：本地后端在跑时执行 `cargo test --test api`，链接阶段报错无法删除旧 exe
+- **原因**：Windows 下运行中的进程锁定其 exe 文件，cargo 无法重链接测试二进制
+- **解决方案**：先 `Stop-Process` 停掉运行中的后端（按 `Get-CimInstance Win32_Process -Filter "name='agent-first.exe'"` 找 PID），跑完测试再重新 `Start-Process` 拉起
+- **规避方式**：本地开发循环中，测试与常驻服务二选一
+
+### PowerShell 下 git commit 多行消息不能用 bash heredoc
+- **现象**：`git commit -m "$(cat <<'EOF' ... )"` 报 ParserError
+- **原因**：PowerShell 不支持 bash heredoc 语法
+- **解决方案**：用多个 `-m` 参数（`git commit -m "标题" -m "正文"`），首段为标题、其余为正文段落
 
 ### filter.py 把英文条目误判为中文（蒸馏数据格式校验莫名失败）
 - **现象**：`_distilled_028_041.json` 中一条英文 problem 校验失败，报超长（上限 120），但肉眼看不长
