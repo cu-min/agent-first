@@ -1,0 +1,155 @@
+{
+  "_说明": "agent-first 检索质量评测集。positives 每条查询带 expect（目标记忆 problem 的唯一子串标记）与 style（error=报错/症状原文，paraphrase=同义改写，keyword=短关键词，cross=跨语言）。negatives 期望返回空列表：non_tech=非技术无关查询，tech_absent=真实技术话题但语料未覆盖（最难的一类）。查询只作评测工具，绝不写入记忆网络。",
+  "positives": [
+    {"query": "JSX element type does not have any construct or call signatures", "expect": "JSX element type Elem", "style": "error"},
+    {"query": "rendering a function parameter typed as React.Component fails in JSX", "expect": "JSX element type Elem", "style": "paraphrase"},
+    {"query": "TS2604 JSX 元素类型没有构造签名", "expect": "JSX element type Elem", "style": "cross"},
+
+    {"query": "Refused to load the font data font/woff base64 content security policy", "expect": "Refused to load the font", "style": "error"},
+    {"query": "CSP blocks dev websocket and base64 fonts in react app", "expect": "Refused to load the font", "style": "paraphrase"},
+    {"query": "CSP 拦截字体和 websocket 报错", "expect": "Refused to load the font", "style": "cross"},
+
+    {"query": "make all pydantic model fields optional for PATCH without duplicating the model", "expect": "PATCH endpoints need every field", "style": "paraphrase"},
+    {"query": "pydantic optional fields patch update model", "expect": "PATCH endpoints need every field", "style": "keyword"},
+    {"query": "pydantic PATCH 更新模型字段全部可选", "expect": "PATCH endpoints need every field", "style": "cross"},
+
+    {"query": "React was used before it's defined no-use-before-define", "expect": "React was used before it was defined", "style": "error"},
+    {"query": "eslint fails on the first import line in CRA typescript project", "expect": "React was used before it was defined", "style": "paraphrase"},
+    {"query": "typescript eslint react import build error", "expect": "React was used before it was defined", "style": "keyword"},
+
+    {"query": "pydantic validator does not run when attribute is assigned later", "expect": "Pydantic validator applies the fallback", "style": "paraphrase"},
+    {"query": "User(name=None) yields fallback but user.name = None stores None", "expect": "Pydantic validator applies the fallback", "style": "error"},
+    {"query": "pydantic 赋值不触发 validator", "expect": "Pydantic validator applies the fallback", "style": "cross"},
+
+    {"query": "Cannot find module ../assets/image.jpg parcel", "expect": "Cannot find module ../assets/image.jpg", "style": "error"},
+    {"query": "typescript declaration file for image imports not picked up by parcel", "expect": "Cannot find module ../assets/image.jpg", "style": "paraphrase"},
+    {"query": "parcel jpg import module not found d.ts", "expect": "Cannot find module ../assets/image.jpg", "style": "keyword"},
+
+    {"query": "file-loader emitted asset returns 404 at runtime", "expect": "file-loader copies images", "style": "error"},
+    {"query": "webpack build produces broken image urls and hashed filenames unexpectedly", "expect": "file-loader copies images", "style": "paraphrase"},
+    {"query": "webpack file-loader publicpath image url wrong", "expect": "file-loader copies images", "style": "keyword"},
+
+    {"query": "standard_init_linux.go:211 exec user process caused exec format error", "expect": "Python container fails on minikube", "style": "error"},
+    {"query": "container runs fine with docker but crashes on minikube", "expect": "Python container fails on minikube", "style": "paraphrase"},
+    {"query": "minikube cronjob exec format error shebang", "expect": "Python container fails on minikube", "style": "keyword"},
+
+    {"query": "Cannot use JSX unless the --jsx flag is provided", "expect": "Cannot use JSX unless the --jsx flag", "style": "error"},
+    {"query": "tsx files report JSX error even though tsconfig sets jsx react", "expect": "Cannot use JSX unless the --jsx flag", "style": "paraphrase"},
+    {"query": "VSCode 打开 tsx 报 jsx flag 错误", "expect": "Cannot use JSX unless the --jsx flag", "style": "cross"},
+
+    {"query": "服务器重启后 node 里的定时任务全没了", "expect": "Node 定时任务在服务器重启后全部丢失", "style": "paraphrase"},
+    {"query": "node 定时任务 重启 丢失", "expect": "Node 定时任务在服务器重启后全部丢失", "style": "keyword"},
+    {"query": "nodejs scheduled jobs disappear after restart", "expect": "Node 定时任务在服务器重启后全部丢失", "style": "cross"},
+
+    {"query": "webhook 验签失败", "expect": "Webhook 验签一直失败", "style": "keyword"},
+    {"query": "回调签名校验总是对不上怎么排查", "expect": "Webhook 验签一直失败", "style": "paraphrase"},
+    {"query": "hmac webhook signature verification always fails", "expect": "Webhook 验签一直失败", "style": "cross"},
+
+    {"query": "argon2 cpu 打满", "expect": "Argon2 密码校验把 CPU 打满", "style": "keyword"},
+    {"query": "密码校验接口把 CPU 跑满了", "expect": "Argon2 密码校验把 CPU 打满", "style": "paraphrase"},
+    {"query": "argon2 password verification high cpu", "expect": "Argon2 密码校验把 CPU 打满", "style": "cross"},
+
+    {"query": "reqwest 偶发连接重置", "expect": "reqwest 高并发下偶发连接重置", "style": "keyword"},
+    {"query": "rust http 客户端高并发下连接被重置", "expect": "reqwest 高并发下偶发连接重置", "style": "paraphrase"},
+    {"query": "reqwest ECONNRESET under high concurrency", "expect": "reqwest 高并发下偶发连接重置", "style": "cross"},
+
+    {"query": "embedding 维度不一致", "expect": "Embedding 维度不一致导致写入报错", "style": "keyword"},
+    {"query": "换 embedding 模型后旧数据写入报错", "expect": "Embedding 维度不一致导致写入报错", "style": "paraphrase"},
+    {"query": "pgvector insert dimension mismatch after model switch", "expect": "Embedding 维度不一致导致写入报错", "style": "cross"},
+
+    {"query": "检索到的文档里藏着指令把 agent 带偏了", "expect": "LLM Agent 检索增强时被文档里的指令注入", "style": "paraphrase"},
+    {"query": "rag 提示注入", "expect": "LLM Agent 检索增强时被文档里的指令注入", "style": "keyword"},
+    {"query": "prompt injection via retrieved documents", "expect": "LLM Agent 检索增强时被文档里的指令注入", "style": "cross"},
+
+    {"query": "密钥出现在 url 里被访问日志记下来了", "expect": "API Token 出现在 URL 查询参数里被日志收集", "style": "paraphrase"},
+    {"query": "token 泄露 url 日志", "expect": "API Token 出现在 URL 查询参数里被日志收集", "style": "keyword"},
+    {"query": "api key exposed in query string logs", "expect": "API Token 出现在 URL 查询参数里被日志收集", "style": "cross"},
+
+    {"query": "nginx 413 Request Entity Too Large", "expect": "Nginx 上传文件返回 413", "style": "error"},
+    {"query": "过网关上传文件就报错直连后端没事", "expect": "Nginx 上传文件返回 413", "style": "paraphrase"},
+    {"query": "nginx 上传 413", "expect": "Nginx 上传文件返回 413", "style": "keyword"},
+
+    {"query": "CORS 预检失败 自定义头", "expect": "自定义 CORS 请求头触发预检失败", "style": "keyword"},
+    {"query": "加了个自定义请求头浏览器就报跨域错误", "expect": "自定义 CORS 请求头触发预检失败", "style": "paraphrase"},
+    {"query": "CORS preflight fails custom header not allowed", "expect": "自定义 CORS 请求头触发预检失败", "style": "cross"},
+
+    {"query": "JWT 测试环境 401", "expect": "JWT 一到测试环境就 401", "style": "keyword"},
+    {"query": "本地好的 token 到测试机就一直 401", "expect": "JWT 一到测试环境就 401", "style": "paraphrase"},
+    {"query": "jwt 401 in staging environment works locally", "expect": "JWT 一到测试环境就 401", "style": "cross"},
+
+    {"query": "git rebase 冲突 想放弃", "expect": "Git rebase 冲突处理到一半想放弃", "style": "keyword"},
+    {"query": "rebase 到一半发现搞砸了怎么回到原来", "expect": "Git rebase 冲突处理到一半想放弃", "style": "paraphrase"},
+    {"query": "abort rebase and restore original state", "expect": "Git rebase 冲突处理到一半想放弃", "style": "cross"},
+
+    {"query": "playwright 无头 点击无效", "expect": "Playwright 无头模式下按钮点击无反应", "style": "keyword"},
+    {"query": "无头浏览器里按钮点了没反应有头模式正常", "expect": "Playwright 无头模式下按钮点击无反应", "style": "paraphrase"},
+    {"query": "playwright click not working in headless mode", "expect": "Playwright 无头模式下按钮点击无反应", "style": "cross"},
+
+    {"query": "docker 容器 访问 宿主机", "expect": "Docker 容器内访问宿主机服务被拒绝", "style": "keyword"},
+    {"query": "容器里 localhost 访问不到宿主机上的服务", "expect": "Docker 容器内访问宿主机服务被拒绝", "style": "paraphrase"},
+    {"query": "docker container cannot reach service on host", "expect": "Docker 容器内访问宿主机服务被拒绝", "style": "cross"},
+
+    {"query": "compose 启动顺序 依赖", "expect": "Docker Compose 服务启动顺序错乱导致连接失败", "style": "keyword"},
+    {"query": "应用比数据库先起来导致连接失败", "expect": "Docker Compose 服务启动顺序错乱导致连接失败", "style": "paraphrase"},
+    {"query": "docker compose depends_on not waiting for database", "expect": "Docker Compose 服务启动顺序错乱导致连接失败", "style": "cross"},
+
+    {"query": "mybatis-plus 分页 不生效", "expect": "MyBatis-Plus 分页查询返回了全部数据", "style": "keyword"},
+    {"query": "配置了分页插件但查出来还是全量数据", "expect": "MyBatis-Plus 分页查询返回了全部数据", "style": "paraphrase"},
+    {"query": "mybatis-plus pagination returns all records", "expect": "MyBatis-Plus 分页查询返回了全部数据", "style": "cross"},
+
+    {"query": "@Transactional 同类调用 不生效", "expect": "Spring Boot @Transactional 同类方法自调用不生效", "style": "keyword"},
+    {"query": "同一个类里方法互调事务注解不回滚", "expect": "Spring Boot @Transactional 同类方法自调用不生效", "style": "paraphrase"},
+    {"query": "spring transactional self invocation not working", "expect": "Spring Boot @Transactional 同类方法自调用不生效", "style": "cross"},
+
+    {"query": "antd modal form 值 不更新", "expect": "AntD Modal 里 Form 拿不到最新值", "style": "keyword"},
+    {"query": "弹窗里的表单提交后拿到的还是旧值", "expect": "AntD Modal 里 Form 拿不到最新值", "style": "paraphrase"},
+    {"query": "antd form inside modal stale values", "expect": "AntD Modal 里 Form 拿不到最新值", "style": "cross"},
+
+    {"query": "useEffect 无限重渲染", "expect": "React useEffect 里 setState 导致无限重渲染", "style": "keyword"},
+    {"query": "组件一直重复渲染停不下来 hooks", "expect": "React useEffect 里 setState 导致无限重渲染", "style": "paraphrase"},
+    {"query": "react infinite re-render setState in useEffect", "expect": "React useEffect 里 setState 导致无限重渲染", "style": "cross"},
+
+    {"query": "pg_trgm 中文 效果差", "expect": "pg_trgm 相似度检索中文效果差", "style": "keyword"},
+    {"query": "三元组相似度对中文检索基本没用", "expect": "pg_trgm 相似度检索中文效果差", "style": "paraphrase"},
+    {"query": "postgres trigram similarity chinese poor", "expect": "pg_trgm 相似度检索中文效果差", "style": "cross"},
+
+    {"query": "pgvector 检索 不相关", "expect": "pgvector 检索结果大量不相关", "style": "keyword"},
+    {"query": "向量检索出来的结果一大半都挨不上边", "expect": "pgvector 检索结果大量不相关", "style": "paraphrase"},
+    {"query": "pgvector search returns irrelevant results", "expect": "pgvector 检索结果大量不相关", "style": "cross"},
+
+    {"query": "sqlx 连接池 超时", "expect": "sqlx 连接池在并发压测下报连接超时", "style": "keyword"},
+    {"query": "并发一上来数据库连接就超时 rust", "expect": "sqlx 连接池在并发压测下报连接超时", "style": "paraphrase"},
+    {"query": "rust sqlx pool timeout under load", "expect": "sqlx 连接池在并发压测下报连接超时", "style": "cross"},
+
+    {"query": "axum ConnectInfo 127.0.0.1", "expect": "Rust Axum 里 ConnectInfo 拿到的总是 127.0.0.1", "style": "keyword"},
+    {"query": "axum 服务拿到的客户端地址永远是本机回环", "expect": "Rust Axum 里 ConnectInfo 拿到的总是 127.0.0.1", "style": "paraphrase"},
+    {"query": "axum remote address always localhost", "expect": "Rust Axum 里 ConnectInfo 拿到的总是 127.0.0.1", "style": "cross"}
+  ],
+  "negatives": [
+    {"query": "红烧肉怎么做才软烂", "category": "non_tech"},
+    {"query": "护照办理需要准备什么材料", "category": "non_tech"},
+    {"query": "初学者买什么吉他比较好", "category": "non_tech"},
+    {"query": "怎么提高睡眠质量", "category": "non_tech"},
+    {"query": "推荐几部好看的悬疑电影", "category": "non_tech"},
+    {"query": "周末露营装备清单", "category": "non_tech"},
+    {"query": "年终总结怎么写给领导看", "category": "non_tech"},
+    {"query": "how to train my dog", "category": "non_tech"},
+    {"query": "best hiking boots for beginners", "category": "non_tech"},
+    {"query": "what is the meaning of life philosophy", "category": "non_tech"},
+    {"query": "how to learn piano as an adult", "category": "non_tech"},
+    {"query": "how to plan a budget wedding", "category": "non_tech"},
+
+    {"query": "Kubernetes pod OOMKilled 怎么排查", "category": "tech_absent"},
+    {"query": "MySQL 死锁排查", "category": "tech_absent"},
+    {"query": "Go goroutine 泄漏怎么检测", "category": "tech_absent"},
+    {"query": "Redis 缓存击穿怎么解决", "category": "tech_absent"},
+    {"query": "Swift 真机调试签名失败", "category": "tech_absent"},
+    {"query": "Linux 服务器磁盘满了怎么清理", "category": "tech_absent"},
+    {"query": "CI 流水线随机失败 flaky test", "category": "tech_absent"},
+    {"query": "Flutter 升级后 Android 构建失败", "category": "tech_absent"},
+    {"query": "Nuxt 3 水合报错 hydration mismatch", "category": "tech_absent"},
+    {"query": "Kafka 消费者重复消费", "category": "tech_absent"},
+    {"query": "Python venv 激活失败 Windows", "category": "tech_absent"},
+    {"query": "Vue Router 路由守卫死循环", "category": "tech_absent"}
+  ]
+}
