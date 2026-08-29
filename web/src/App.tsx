@@ -6,6 +6,7 @@ import OverviewPage from './pages/OverviewPage'
 import LibraryPage from './pages/LibraryPage'
 import ConsolePage from './pages/ConsolePage'
 import MemoryDetailModal from './pages/MemoryDetailModal'
+import GapDetailModal from './pages/GapDetailModal'
 
 const TOKEN_KEY = 'agent-first-developer-token'
 
@@ -64,6 +65,19 @@ export default function App() {
       navigate(route.page)
     }
   }
+  const pushedGap = useRef(false)
+  const openGap = (id: string) => {
+    pushedGap.current = true
+    navigate(`${route.page}/gap/${id}`)
+  }
+  const closeGap = () => {
+    if (pushedGap.current) {
+      pushedGap.current = false
+      window.history.back()
+    } else {
+      navigate(route.page)
+    }
+  }
 
   return <main className="shell">
     <Toasts toasts={toasts} />
@@ -78,10 +92,11 @@ export default function App() {
     </header>
 
     {route.page === 'overview' && <OverviewPage openMemory={openMemory} />}
-    {route.page === 'library' && <LibraryPage token={developerToken} onToast={addToast} openMemory={openMemory} />}
+    {route.page === 'library' && <LibraryPage token={developerToken} onToast={addToast} openMemory={openMemory} openGap={openGap} />}
     {route.page === 'console' && <ConsolePage token={developerToken} onAuth={handleAuth} onLogout={handleLogout} onToast={addToast} confirm={confirm} />}
 
-    {route.memoryId && <MemoryDetailModal id={route.memoryId} token={developerToken} onClose={closeMemory} />}
+    {route.memoryId && <MemoryDetailModal id={route.memoryId} token={developerToken} onClose={closeMemory} openGap={openGap} />}
+    {route.gapId && <GapDetailModal id={route.gapId} token={developerToken} onClose={closeGap} openMemory={openMemory} />}
 
     {confirmOptions && <ConfirmDialog options={confirmOptions} onDone={finishConfirm} />}
     {legal && <LegalModal kind={legal} onClose={() => setLegal(null)} onCopy={(value, label) => void copyText(value, label)} />}

@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 
 export type Page = 'overview' | 'library' | 'console'
-export type Route = { page: Page; memoryId: string | null }
+export type Route = { page: Page; memoryId: string | null; gapId: string | null }
 
 export const parseRoute = (): Route => {
   const parts = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   const page: Page = parts[0] === 'library' || parts[0] === 'console' ? parts[0] : 'overview'
   const memoryIndex = parts.indexOf('memory')
   const memoryId = memoryIndex >= 0 ? (parts[memoryIndex + 1] ?? null) : null
-  return { page, memoryId }
+  const gapIndex = parts.indexOf('gap')
+  const gapId = gapIndex >= 0 ? (parts[gapIndex + 1] ?? null) : null
+  return { page, memoryId, gapId }
 }
 
 export const navigate = (path: string) => {

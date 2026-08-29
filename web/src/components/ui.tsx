@@ -1,5 +1,7 @@
 import { ReactNode, useEffect, useRef } from 'react'
-import { Memory, stClass, resultText } from '../lib/api'
+import { Memory, stClass, resultText, langText, relTime, visibilityText } from '../lib/api'
+
+const sourceText: Record<string, string> = { agent: 'Agent', public_import: '公开导入' }
 
 export function Toasts({ toasts }: { toasts: { id: number; text: string; kind: 'info' | 'error' }[] }) {
   return <div className="toast-container" role="status" aria-live="polite">
@@ -47,11 +49,36 @@ export function ConfirmDialog({ options, onDone }: { options: ConfirmOptions; on
 }
 
 export function MemoryCard({ item, onOpen }: { item: Memory; onOpen: (id: string) => void }) {
+  const author = item.author_agent_name ? `Agent ${item.author_agent_name}` : (sourceText[item.source_type] ?? item.source_type)
   return <button type="button" className="memory-card" onClick={() => onOpen(item.id)}>
-    <span className="top"><span className={`st ${stClass[item.outcome_kind] ?? 'unknown'}`}>{resultText[item.outcome_kind] ?? item.outcome_kind}</span><span>·</span><span>{item.source_type}</span></span>
+    <span className="top">
+      <span>{author}</span><span>·</span>
+      <span className={`st ${stClass[item.outcome_kind] ?? 'unknown'}`}>{resultText[item.outcome_kind] ?? item.outcome_kind}</span><span>·</span>
+      <span>{visibilityText[item.visibility] ?? item.visibility}</span>
+    </span>
     <h3>{item.problem}</h3>
     <span className="outcome">{item.outcome}</span>
-    <span className="meta"><span>证据 {item.evidence_count} · Agent 复用 {item.agent_positive_feedback} · Human 反馈 {item.human_positive_feedback}</span><span>{item.tags.map(tag => `#${tag}`).join(' ')}</span></span>
+    <span className="meta"><span>证据 {item.evidence_count} · Agent 复用 {item.agent_positive_feedback} · Human 反馈 {item.human_positive_feedback} · {relTime(item.created_at)}</span><span>{item.tags.map(tag => `#${tag}`).join(' ')}</span></span>
+  </button>
+}
+
+export type GapCardData = { id: string; question: string; closed?: boolean; visibility?: string; attempted?: string | null; language?: string | null; created_at?: string; linked_count?: number }
+
+export function GapCard({ item, onOpen }: { item: GapCardData; onOpen: (id: string) => void }) {
+  const closed = item.closed ?? (item.linked_count ?? 0) > 0
+  const metaLeft = [
+    item.language ? (langText[item.language] ?? item.language) : null,
+    item.linked_count !== undefined ? `解法 ${item.linked_count}` : null,
+    item.created_at ? relTime(item.created_at) : null,
+  ].filter((part): part is string => part !== null).join(' · ')
+  return <button type="button" className="gap-card" onClick={() => onOpen(item.id)}>
+    <span className="top">
+      <span className={`gap-st ${closed ? 'closed' : 'open'}`}>{closed ? '已闭环' : '待解'}</span><span>·</span><span>缺口</span>
+      {item.visibility && <><span>·</span><span>{visibilityText[item.visibility] ?? item.visibility}</span></>}
+    </span>
+    <h3>{item.question}</h3>
+    {item.attempted && <span className="outcome">已尝试：{item.attempted}</span>}
+    {metaLeft && <span className="meta"><span>{metaLeft}</span></span>}
   </button>
 }
 
