@@ -1,5 +1,16 @@
 # 项目记录
 
+## 2026-08-28 — 150 条蒸馏全量完成，盲测判定 9 条幸存入库
+
+- 目标：完成题单 150 条蒸馏收尾（112-150 三批）、补做盲测等价判定，并将幸存条目与 22 条真实种子并存入库。
+- 完成内容：
+  - 蒸馏收尾：`_distilled_112_125`（Express next/SQLAlchemy 核心）、`_distilled_126_139`（SQLAlchemy 补充 + pandas/PostgreSQL + FastAPI 基础）、`_distilled_140_150`（FastAPI/Pydantic 进阶）三批 41 条，合并全量 150 条过 filter.py（格式 150/150、去重 0、质量分全 ≥50）。
+  - 盲测等价判定：`_blind_answers.json`（150 条真盲答）与蒸馏解法逐条对照，判定文件 `_judged_sample_30/_judged_batch1/2/3.json`。**150 条仅 9 条不等价幸存**（保留率 6%）：#24 CronJob command override .py 缺 shebang、#50 VS Code 用旧版 TS、#53 构造器 vs 实例类型、#58 tsconfig include 缩窄/index.d.ts 被静默忽略、#68 react-scripts 与 @typescript-eslint 版本错配、#79 file! 前缀绕过 webpack 配置、#80 CSP 真凶 Grammarly 扩展、#141 PATCH 模型程序化派生、#147 validate_assignment 赋值触发验证。
+  - 入库：`seeds/import_survivors.py` 走官方 API 路径导入 9 条（1 agent + 1 developer + 1 workspace，auto 公开策略），`memory_evidence` 9 行溯源全部入库。
+  - 关键发现：**fetch_so.py 按热度选题与 STANDARDS 5.5 价值标准负相关**——高赞题即模型预训练覆盖最密的题，盲测前即注定 93%+ 被刷掉。测量结论（高赞 SO ≈ 94% 模型已会）是本轮 150 条学费换来的校准数。
+- 做出的决定：141 条等价条目**不入库**（重蹈 604 条污染库覆辙）；幸存 9 条 + 22 条真实种子共存，31 条全量 embedding；导入标准改造（长尾选题器/postmortem 换源）留待后续分析。
+- 验证结果：DB 31 total / 31 embedding / 9 evidence；英文查询命中刚导入的英文记忆，`retrieval=hybrid_rrf` 生效。
+
 ## 2026-08-28 — 上线前收尾修复：检索上限、文档纠偏、管线默认值
 
 - 目标：处理全面审查遗留的非数据类问题（604 条数据清理另线并行处理）。
@@ -204,3 +215,19 @@
 - 做出的决定：阈值只在候选过滤层生效，不改排序逻辑；导入接口与单条写入共用同一敏感拦截与校验路径；账户删除不做软删除，直接级联物理删除。
 - 验证结果：`cargo fmt --check`、`cargo test`（6 项通过）、`npm run build`、`docker compose config --quiet`（本地与生产编排均通过）、种子 JSON（22 条）与两个示例脚本语法校验通过。
 - 遗留事项：域名解析生效后在生产环境执行 `deploy/compose.prod.yaml` 并灌入种子；公网运行一段时间后按真实检索质量微调两个阈值。
+
+## 2026-08-28 — main.rs 模块化拆分与测试体系补全
+
+- 目标：把 2393 行的 `server/src/main.rs` 按领域拆分为可维护模块，并补齐单元与集成测试。
+- 完成内容：
+  - 拆分：main.rs → 薄入口 + `src/lib.rs`（装配 `run()`）+ 15 个领域模块：`routes`、`handlers/{agents,developers,feedback,gaps,memories,meta,public,search}`、`models`、`search`、`auth`、`authz`、`store`、`embed`、`ratelimit`、`security`、`validation`、`net`、`config`、`state`、`error`。lib 对外公共面收窄为 `AppConfig` / `AppState::new` / `build_router` / `SearchThresholds`。
+  - 后端单元测试 57 项：新增 error 响应体与状态映射、models 枚举 serde 往返与默认值、config 阈值解析边界、security URL/标签/token 前缀、validation 证据 HTTPS 与数量上限与敏感拦截；修正 ratelimit 零窗口测试的语义错误。
+  - 后端集成测试 8 项（`tests/api.rs`）：`#[sqlx::test]` 每用例独立临时库自动跑迁移，oneshot + MockConnectInfo 直打真实路由——healthz/CSP、注册落库、未认证 401、记忆生命周期 + 词法检索、校验 400、开发者认领→登录→发布→移除全链路、每 Agent 30 条限流 429、未知 ID 404。
+  - 测试环境支撑：PostgreSQL `agentfirst` 授予 CREATEDB；`vector`/`pg_trgm` 预装 `template1` 使临时库继承；`server/.cargo/config.toml [env]` 提供 `DATABASE_URL`（本地 trust 认证无口令）。
+  - 前端测试：vitest + jsdom 20 项——router 哈希解析、密码规则（从 ConsolePage 抽离至 `lib/password.ts`）、api 纯函数 relTime/fmtNum/condText。
+- 修改位置：`server/src/**`（拆分）、`server/tests/api.rs`（新增）、`server/Cargo.toml`、`server/.cargo/config.toml`、`web/vite.config.ts`、`web/package.json`、`web/src/lib/password.ts`（新增）。
+- 遇到的问题：shell 无 MSVC 链接器；`#[sqlx::test]` 需要编译期 `DATABASE_URL`；非超户在临时库 `CREATE EXTENSION vector` 被拒。
+- 原因与解决方式：构建固定用 `cargo +stable-x86_64-pc-windows-gnu`（server 目录下，rust-lld 链接）；`[env]` 注入无口令连接串；扩展装入 `template1` 供新建库继承。
+- 做出的决定：lib 对外仅 4 个公共项，模块内部保持 pub(crate)；集成测试走真实路由与真实数据库，不做数据层 mock。
+- 验证结果：`cargo test` 65 项全绿（57 单元 + 8 集成）；`npm test` 20 项全绿；`npm run build` 通过；后端以新二进制重启后 healthz 200、`/v1/public/overview` 返回 31 条公开记忆、`/v1/search` 走 hybrid_rrf 正常返回。
+- 遗留事项：CI 接入（GitHub Actions 需自建 PG 服务容器后才能跑集成测试）。
