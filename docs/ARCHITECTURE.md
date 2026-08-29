@@ -15,14 +15,14 @@
 │                                             │
 │  依赖：                                      │
 │  ├── PostgreSQL 17 (pgvector + pg_trgm)     │
-│  └── Ollama + bge-m3 (本地 embedding)       │
+│  └── 智谱 Embedding-3 (云端 embedding API) │
 └─────────────────────────────────────────────┘
 ```
 
 - **服务端**：`server/` Rust + Axum + sqlx。lib + bin 双 target：`src/main.rs` 为薄入口，`src/lib.rs` 负责装配（`run()`）并按领域拆分模块——`routes`（路由）、`handlers/`（接口层）、`models`（数据结构）、`search`（混合检索纯逻辑）、`auth`/`authz`（鉴权与授权）、`store`（数据访问）、`embed`（向量服务 + 熔断）、`ratelimit`、`security`（脱敏与校验）、`validation`、`net`（真实 IP）、`config`、`state`、`error`；对外仅公开 `AppConfig` / `AppState::new` / `build_router` / `SearchThresholds`
 - **前端**：`web/` React + Vite（构建后由服务端静态伺服，同源）
 - **数据库**：PostgreSQL 17，独立 Docker 容器（主机 `5433` → 容器 `5432`）
-- **向量检索**：pgvector 扩展；embedding 由本地 Ollama 的 bge-m3 模型生成
+- **向量检索**：pgvector 扩展；embedding 由智谱 Embedding-3 云端 API 生成（1024 维，OpenAI 兼容接口）
 
 ## 2. 核心设计原则
 
@@ -71,12 +71,12 @@
        │   pg_trgm trigram 相似度    │
        │   + token 级 ILIKE 匹配     ├── RRF 融合 ──► top-K 结果
        └── 语义检索 (semantic) ──────┤
-           bge-m3 向量 + pgvector    │
+           智谱 Embedding-3 向量     │
            L2 距离 (<=>)             ┘
 ```
 
 - **词法**：trigram 相似度（阈值 0.05）+ 查询分词后的 `ILIKE ANY`（token 级匹配，降低整句匹配失效）
-- **语义**：写入时对 `search_text` 调 Ollama bge-m3 生成 1024 维向量；查询时同样转向量，`embedding <=> query` 取最近
+- **语义**：写入时对 `search_text` 调智谱 Embedding-3 云端 API（显式传 `dimensions=1024`）生成向量；查询时同样转向量，`embedding <=> query` 取最近
 - **融合**：RRF（Reciprocal Rank Fusion，K=60），两路各取前 20 名合并
 
 ### 4.2 排序加权
@@ -85,7 +85,7 @@
 
 ### 4.3 熔断器（embedding 容错）
 
-embedding 服务（Ollama）故障时，`search` 会同步等 3 秒超时。熔断器避免每个请求都干等：
+embedding 云端 API 故障时，`search` 会同步等 3 秒超时。熔断器避免每个请求都干等：
 
 ```
 Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回词法）
@@ -95,7 +95,7 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 
 - 阈值 3 次、冷却 30 秒（`BREAKER_THRESHOLD` / `BREAKER_COOLDOWN_SECS`）
 - 熔断打开时直接走词法检索，不报错不卡顿
-- 正常时本地 Ollama 延迟 <100ms；冷启动加载 bge-m3 约 3 秒
+- 正常时云端 embedding API 延迟为公网往返（数百毫秒），异常时受 3 秒 HTTP 超时兜底
 
 ## 5. 安全设计
 
@@ -137,7 +137,8 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | `EMBEDDING_ENDPOINT` / `API_KEY` / `MODEL` | OpenAI 兼容 embedding 服务（缺省时退化为纯词法） |
 | `TRUSTED_PROXIES` | 可信反向代理网段（CIDR，逗号分隔）。设置后限流按 X-Forwarded-For 解析真实客户端 IP |
 | `SEARCH_LEXICAL_MIN_SCORE` | 词法检索最低相关分（默认 0.10，范围 0-1） |
-| `SEARCH_SEMANTIC_MIN_SCORE` | 语义检索最低余弦相似度（默认 0.35，范围 0-1） |
+| `SEARCH_SEMANTIC_MIN_SCORE` | 语义检索最低余弦相似度（默认 0.50，范围 0-1） |
+| `SEARCH_GAP_MIN_SCORE` | 缺口语义检索最低余弦相似度（默认 0.65，范围 0-1） |
 
 ### 6.5 生产部署
 

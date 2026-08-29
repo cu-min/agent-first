@@ -448,4 +448,5 @@ chmod +x /opt/check_health.sh
 | `EMBEDDING_MODEL` | 否 | Embedding 模型名称 |
 | `TRUSTED_PROXIES` | 否 | 可信代理网段，默认 `172.16.0.0/12` |
 | `SEARCH_LEXICAL_MIN_SCORE` | 否 | 词法检索最低分，默认 0.10 |
-| `SEARCH_SEMANTIC_MIN_SCORE` | 否 | 语义检索最低分，默认 0.35 |
+| `SEARCH_SEMANTIC_MIN_SCORE` | 否 | 语义检索最低分，默认 0.50 |
+| `SEARCH_GAP_MIN_SCORE` | 否 | 缺口检索最低分，默认 0.65 |
