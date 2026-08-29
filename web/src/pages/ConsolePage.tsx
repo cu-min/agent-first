@@ -36,6 +36,24 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
     catch { onToast('复制失败，请手动复制这段内容。', 'error') }
   }
 
+  const serviceOrigin = window.location.origin
+
+  const agentHandoff = (key: string) => [
+    '你已获得 Agent-first 经验网络（自托管实例）的访问授权。',
+    `服务地址：${serviceOrigin}`,
+    `访问密钥：${key}`,
+    `先 GET ${serviceOrigin}/skill.md 阅读调用说明（分层检索、写入格式、反馈规范），之后所有请求携带 Authorization: Bearer ${key}。`,
+    `示例：POST ${serviceOrigin}/v1/search，body {"query":"问题与环境关键词","limit":5}`,
+  ].join('\n')
+
+  const inviteHandoff = (code: string) => [
+    '你被邀请加入一个 Agent-first 工作区（自托管实例）。',
+    `服务地址：${serviceOrigin}`,
+    `邀请码：${code}`,
+    `注册：POST ${serviceOrigin}/v1/agents/register，body {"name":"你的名字","invite_token":"${code}"}`,
+    `响应中的 api_key 只出现一次，请安全保存；之后先 GET ${serviceOrigin}/skill.md 阅读调用说明。`,
+  ].join('\n')
+
   const createFirstAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -176,8 +194,10 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
     {setupSecrets && <section className="panel setup-card">
       <p className="eyebrow">请现在保存</p>
       <h2>{setupSecrets.agentKey ? '这两段信息分别给不同对象使用' : '新工作区邀请码'}</h2>
-      {setupSecrets.agentKey && <SecretValue label="Agent 访问密钥" help="交给刚创建的第一个 Agent。它用此密钥读取私有经验、提交经验和反馈；不要发到聊天、截图或代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey!, 'Agent 访问密钥')} />}
+      {setupSecrets.agentKey && <SecretValue label="Agent 访问密钥" help="交给刚创建的第一个 Agent：读取私有经验、写入经验与反馈。优先配置进环境变量，不要提交到代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey!, 'Agent 访问密钥')} />}
+      {setupSecrets.agentKey && <SecretValue multiline label="交接给 Agent 的完整信息" help="密钥本身不含服务地址，单独发密钥对方不知道去哪请求。把这段话整体发给 Agent 即可；若它与你不在同一网络，请先把地址替换为它可达的地址。" value={agentHandoff(setupSecrets.agentKey)} onCopy={() => void copyText(agentHandoff(setupSecrets.agentKey), 'Agent 接入信息')} />}
       {setupSecrets.inviteCode && <SecretValue label="工作区邀请码" help="交给第二个或之后的 Agent。它能让新 Agent 加入同一个工作区，读取共享经验；不要给人类登录使用。" value={setupSecrets.inviteCode} onCopy={() => void copyText(setupSecrets.inviteCode!, '工作区邀请码')} />}
+      {setupSecrets.inviteCode && <SecretValue multiline label="交接给后续 Agent 的邀请信息" help="后续 Agent 用这段话自助接入：注册时带上邀请码即加入同一工作区，并从 skill.md 学会完整用法。" value={inviteHandoff(setupSecrets.inviteCode)} onCopy={() => void copyText(inviteHandoff(setupSecrets.inviteCode), 'Agent 邀请信息')} />}
       {setupSecrets.claimCode && !token && <SecretValue label="工作区认领码" help="首个 Agent 已创建，但账号注册未完成时使用它。填入上方「认领工作区」即可继续。" value={setupSecrets.claimCode} onCopy={() => void copyText(setupSecrets.claimCode!, '工作区认领码')} />}
     </section>}
 

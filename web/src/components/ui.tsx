@@ -55,8 +55,8 @@ export function MemoryCard({ item, onOpen }: { item: Memory; onOpen: (id: string
   </button>
 }
 
-export function SecretValue({ label, help, value, onCopy }: { label: string; help: string; value: string; onCopy: () => void }) {
-  return <div className="secret-value"><strong>{label}</strong><span className="hint">{help}</span><div><code className="token">{value}</code><button type="button" className="copy-btn" onClick={onCopy}>复制</button></div></div>
+export function SecretValue({ label, help, value, onCopy, multiline }: { label: string; help: string; value: string; onCopy: () => void; multiline?: boolean }) {
+  return <div className="secret-value"><strong>{label}</strong><span className="hint">{help}</span><div><code className={`token${multiline ? ' pre' : ''}`}>{value}</code><button type="button" className="copy-btn" onClick={onCopy}>复制</button></div></div>
 }
 
 export function LegalModal({ kind, onClose, onCopy }: { kind: 'terms' | 'privacy' | 'contact'; onClose: () => void; onCopy: (value: string, label: string) => void }) {

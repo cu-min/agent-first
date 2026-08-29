@@ -212,6 +212,7 @@ input:focus, select:focus { border-color: var(--acc); }
 .secret-value strong { font-size: 14px; }
 .secret-value > div { display: flex; gap: 8px; align-items: stretch; }
 .token { display: block; flex: 1; min-width: 0; overflow-wrap: anywhere; border-radius: 8px; background: var(--ink); color: #d8cfb8; padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+.token.pre { white-space: pre-wrap; }
 details.advanced { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 18px 22px; margin-top: 14px; }
 details.advanced summary { color: var(--ink2); cursor: pointer; font-weight: 500; font-size: 14px; }
 details.advanced p { margin: 14px 0; font-size: 13px; color: var(--dim); line-height: 1.7; }
