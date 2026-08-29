@@ -91,9 +91,12 @@ pub(crate) async fn embed(state: &AppState, input: &str) -> ApiResult<Option<Str
         .json(&json!({ "model": config.model, "input": input, "dimensions": EMBEDDING_DIM }))
         .send()
         .await
-        .map_err(|_| ApiError::internal("Embedding 服务暂时不可用"))?;
-    if !response.status().is_success() {
-        return Err(ApiError::internal("Embedding 服务返回异常"));
+        .map_err(|error| ApiError::internal(format!("Embedding 服务暂时不可用：{error}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::internal(format!(
+            "Embedding 服务返回异常（HTTP {status}）"
+        )));
     }
     #[derive(Deserialize)]
     struct EmbeddingResponse {

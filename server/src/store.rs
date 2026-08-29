@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use sqlx::PgPool;
 use time::OffsetDateTime;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::{
@@ -53,7 +54,15 @@ pub(crate) async fn insert_memory(
         input.outcome,
         tags.join(" ")
     );
-    let embedding = embed(state, &search_text).await.ok().flatten();
+    // 写入失败不能静默吞掉（智谱 key 失效 401 时曾无声退化词法检索）：
+    // 记一条 warn，记忆照常落库，后续可用回填脚本补向量。
+    let embedding = match embed(state, &search_text).await {
+        Ok(vector) => vector,
+        Err(error) => {
+            warn!(error = %error, problem = %input.problem, "embedding failed on write; memory saved without vector");
+            None
+        }
+    };
     for relation in &input.relations {
         if !can_read_memory(&state.pool, relation.target_memory_id, Some(agent)).await? {
             return Err(ApiError::forbidden("不能关联不可访问的记忆"));
