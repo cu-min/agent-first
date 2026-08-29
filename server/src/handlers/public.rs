@@ -86,11 +86,13 @@ pub(crate) async fn list_public_memories(
     let until = query.until.as_deref().and_then(|s| {
         OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
     });
+    // agent_positive_feedback 等是 fetch_memory_summaries 里 JOIN 出来的统计值，
+    // 不是 memories 物理列；排序必须用关联子查询，直接引用列名会 500。
     let order = match query.order_by.as_deref() {
-        Some("reuse") => "agent_positive_feedback DESC, created_at DESC",
-        Some("feedback") => "human_positive_feedback DESC, created_at DESC",
-        Some("evidence") => "evidence_count DESC, created_at DESC",
-        _ => "published_at DESC NULLS LAST, created_at DESC",
+        Some("reuse") => "(SELECT COUNT(*) FROM memory_feedback f WHERE f.memory_id = memories.id AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked')) DESC, created_at DESC".to_owned(),
+        Some("feedback") => "(SELECT COUNT(*) FROM memory_feedback f WHERE f.memory_id = memories.id AND f.source_type = 'human' AND f.verdict IN ('useful', 'worked', 'partially_worked')) DESC, created_at DESC".to_owned(),
+        Some("evidence") => "(SELECT COUNT(*) FROM memory_evidence e WHERE e.memory_id = memories.id) DESC, created_at DESC".to_owned(),
+        _ => "published_at DESC NULLS LAST, created_at DESC".to_owned(),
     };
 
     let mut conditions = vec![
@@ -134,7 +136,9 @@ pub(crate) async fn list_public_memories(
         total_query = total_query.bind(u);
         ids_query = ids_query.bind(u);
     }
-    total_query = total_query.bind(limit).bind(offset);
+    // count 查询没有 LIMIT/OFFSET 占位符，多余的 bind 会与同字符串的其他调用
+    // （如 public_overview 的零 bind 版本）在 sqlx 按连接的语句缓存里冲突，
+    // 触发 "bind message supplies N parameters" 间歇性 500。
     ids_query = ids_query.bind(limit).bind(offset);
 
     let total = total_query.fetch_one(&state.pool).await?;

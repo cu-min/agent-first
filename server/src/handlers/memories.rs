@@ -126,11 +126,12 @@ pub(crate) async fn list_memories(
     let until = query.until.as_deref().and_then(|s| {
         OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
     });
+    // 统计列不存在于 memories 表（由 fetch_memory_summaries JOIN 计算），排序用关联子查询
     let order = match query.order_by.as_deref() {
-        Some("reuse") => "m.agent_positive_feedback DESC, m.created_at DESC",
-        Some("feedback") => "m.human_positive_feedback DESC, m.created_at DESC",
-        Some("evidence") => "m.evidence_count DESC, m.created_at DESC",
-        _ => "m.created_at DESC",
+        Some("reuse") => "(SELECT COUNT(*) FROM memory_feedback f WHERE f.memory_id = m.id AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked')) DESC, m.created_at DESC".to_owned(),
+        Some("feedback") => "(SELECT COUNT(*) FROM memory_feedback f WHERE f.memory_id = m.id AND f.source_type = 'human' AND f.verdict IN ('useful', 'worked', 'partially_worked')) DESC, m.created_at DESC".to_owned(),
+        Some("evidence") => "(SELECT COUNT(*) FROM memory_evidence e WHERE e.memory_id = m.id) DESC, m.created_at DESC".to_owned(),
+        _ => "m.created_at DESC".to_owned(),
     };
 
     let (total, ids) = match principal {
@@ -185,7 +186,7 @@ pub(crate) async fn list_memories(
                 total_query = total_query.bind(u);
                 ids_query = ids_query.bind(u);
             }
-            total_query = total_query.bind(limit).bind(offset);
+            // count 查询不含 LIMIT/OFFSET 占位符，多余 bind 与语句缓存冲突（见 public.rs）
             ids_query = ids_query.bind(limit).bind(offset);
 
             let total = total_query.fetch_one(&state.pool).await?;
@@ -251,7 +252,7 @@ pub(crate) async fn list_memories(
                 total_query = total_query.bind(u);
                 ids_query = ids_query.bind(u);
             }
-            total_query = total_query.bind(limit).bind(offset);
+            // count 查询不含 LIMIT/OFFSET 占位符，多余 bind 与语句缓存冲突（见 public.rs）
             ids_query = ids_query.bind(limit).bind(offset);
 
             let total = total_query.fetch_one(&state.pool).await?;
