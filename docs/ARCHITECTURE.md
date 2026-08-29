@@ -162,7 +162,7 @@ docker compose -f compose.prod.yaml up -d
 ## 8. 待办
 
 - ~~P0（上线阻断）：反代后真实 IP 限流、HTTPS~~（已完成，见 `deploy/`）
-- **P0（上线阻断）**：限流多实例化（当前为进程内存实现，多实例部署需共享存储）
+- **P3（条件触发）**：限流多实例化——单实例部署不阻断（当前决策）；仅当横向扩容多个 API 实例时才需要，方案二选一：限流上移到 Caddy/nginx 网关层，或引入 Redis 共享计数（见 `ratelimit.rs` ponytail 注释）
 - **P2（运维）**：连接池扩容、前端密钥刷新提示、告警接入（~~session 过期清理~~已完成：`lib.rs` 每 6 小时清理过期/撤销 session）
 - **P2（检索）**：缺口搜索（`GET /v1/gaps` 列表）、按时间/outcome_kind 过滤、使用统计
 - **P3（gap 闭环）**：gap 去重 + 自动对账。① 写 gap 前先对已有 gap 做相似度匹配（embedding + trgm 双通道，复用 memories 检索的匹配器），命中则计数+1 而非新建，热度=被问次数；② memory 写入后（或定时任务）拿新 memory 的 `problem` 与所有 open gap 的 `question` 做异步匹配，超阈值自动建 `gap_memory_links` 并标记 gap 已解决，覆盖跨 Agent「B 碰巧解决了 A 留下的 gap」场景（当前 `gap_id` 仅支持同会话显式链接）。注意：检索闭环不依赖此链接（搜索只走 memories），此账本仅用于需求统计与销账；跨 workspace 匹配需双方均 public
