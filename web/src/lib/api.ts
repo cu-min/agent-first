@@ -5,10 +5,14 @@ export type Gap = { id: string; visibility: string; question: string; context: u
 export type GapDetail = { gap: Gap; memories: Memory[]; untrusted_content?: boolean }
 export type RelatedGap = { id: string; question: string; closed: boolean; score: number }
 export type SearchOutput = { items: Memory[]; related_gaps: RelatedGap[]; retrieval: string; untrusted_content: boolean }
-export type Overview = { workspaces: { id: string; name: string; publication_policy: string }[]; agents: { id: string; workspace_id: string; name: string }[]; pending_memories: Memory[] }
+export type Overview = {
+  workspaces: { id: string; name: string; publication_policy: string; created_at: string; updated_at: string }[]
+  agents: { id: string; workspace_id: string; name: string; created_at: string; memory_count: number; public_count: number; feedback_count: number; last_active_at: string | null }[]
+  pending_memories: Memory[]
+}
 export type AgentRegistration = { api_key: string; claim_token?: string }
 export type DeveloperSession = { developer_token: string; workspace_invite_token?: string }
-export type SetupSecrets = { agentKey?: string; claimCode?: string; inviteCode?: string }
+export type SetupSecrets = { agentKey?: string; agentName?: string; claimCode?: string; inviteCode?: string }
 export type MemoryList = { items: Memory[]; total: number; limit: number; offset: number }
 export type GapList = { items: Gap[]; total: number; limit: number; offset: number }
 export type ActivityItem = { kind: 'published' | 'feedback'; at: string; problem: string; agent_name?: string; verdict?: string }

@@ -20,6 +20,9 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [editingAgent, setEditingAgent] = useState<{ id: string; name: string } | null>(null)
+  const [newAgentName, setNewAgentName] = useState('')
+  const [busyId, setBusyId] = useState('')
 
   const loadOverview = async (tokenArg = token) => {
     if (!tokenArg) return
@@ -63,13 +66,13 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
     setLoading(true)
     try {
       registration = await api<AgentRegistration>('/v1/agents/register', { method: 'POST', body: JSON.stringify({ name: form.get('agent_name') }) })
-      setSetupSecrets({ agentKey: registration.api_key, claimCode: registration.claim_token })
+      setSetupSecrets({ agentKey: registration.api_key, agentName: String(form.get('agent_name')), claimCode: registration.claim_token })
       if (!registration.claim_token) throw new Error('创建首个 Agent 后没有获得工作区认领码。')
       const session = await api<DeveloperSession>('/v1/developers/claim', { method: 'POST', body: JSON.stringify({ claim_token: registration.claim_token, login_name: form.get('login_name'), password: pw }) })
       onAuth(session.developer_token)
-      setSetupSecrets({ agentKey: registration.api_key, inviteCode: session.workspace_invite_token })
+      setSetupSecrets({ agentKey: registration.api_key, agentName: String(form.get('agent_name')), inviteCode: session.workspace_invite_token })
       await loadOverview(session.developer_token)
-      onToast('账户与首个 Agent 已创建。请先保存下方两段信息。')
+      onToast('账号与首个 Agent 已创建。请先保存下方两段信息。')
     } catch (error) {
       onToast(registration ? '首个 Agent 已创建，但账号还未完成。请保存下方内容，再用「认领工作区」继续。' : (error instanceof Error ? error.message : '创建失败'), registration ? 'info' : 'error')
     } finally { setLoading(false) }
@@ -113,21 +116,52 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
   }
 
   const rotateAgentKey = async (agentId: string, agentName: string) => {
-    if (!await confirm({ title: '重发访问密钥', message: `要为 ${agentName} 重发访问密钥吗？旧密钥会立刻失效，正在使用它的 Agent 将无法访问。`, confirmLabel: '重发密钥' })) return
+    if (!await confirm({ title: '重发访问密钥', message: `要为 ${agentName} 重发访问密钥吗？旧密钥会立刻失效，正在使用它的 Agent 将无法访问。新密钥只显示一次，请立即保存。`, confirmLabel: '重发密钥' })) return
+    setBusyId(agentId)
     try {
       const data = await api<{ api_key: string }>(`/v1/agents/${agentId}/keys/rotate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
-      setSetupSecrets(current => ({ ...current, agentKey: data.api_key }))
-      onToast(`${agentName} 的新访问密钥已生成。请立即复制并替换 Agent 配置。`)
+      setSetupSecrets({ agentKey: data.api_key, agentName })
+      onToast(`${agentName} 的新访问密钥已生成，显示在上方密钥卡中。`)
     } catch (error) { onToast(error instanceof Error ? error.message : '重发密钥失败', 'error') }
+    finally { setBusyId('') }
   }
 
   const rotateWorkspaceInvite = async (workspaceId: string, workspaceName: string) => {
-    if (!await confirm({ title: '重发邀请码', message: `要为 ${workspaceName} 重发邀请码吗？旧邀请码会立刻失效。`, confirmLabel: '重发邀请码' })) return
+    if (!await confirm({ title: '重发邀请码', message: `要为 ${workspaceName} 重发邀请码吗？旧邀请码会立刻失效，新邀请码只显示一次。`, confirmLabel: '重发邀请码' })) return
     try {
       const data = await api<{ workspace_invite_token: string }>(`/v1/workspaces/${workspaceId}/invite/rotate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
-      setSetupSecrets(current => ({ ...current, inviteCode: data.workspace_invite_token }))
-      onToast('新工作区邀请码已生成。请复制后交给需要加入的 Agent。')
+      setSetupSecrets({ inviteCode: data.workspace_invite_token })
+      onToast('新工作区邀请码已生成，显示在上方密钥卡中。')
     } catch (error) { onToast(error instanceof Error ? error.message : '重发邀请码失败', 'error') }
+  }
+
+  const createAgent = async (event: FormEvent<HTMLFormElement>, workspaceId: string) => {
+    event.preventDefault()
+    const name = newAgentName.trim()
+    if (!name) { onToast('请先填写 Agent 名称。', 'error'); return }
+    setBusyId('add-agent')
+    try {
+      const data = await api<{ api_key: string; agent_id: string }>('/v1/agents', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ workspace_id: workspaceId, name }) })
+      setNewAgentName('')
+      setSetupSecrets({ agentKey: data.api_key, agentName: name })
+      await loadOverview()
+      onToast(`Agent「${name}」已创建。新密钥只显示一次，请立即保存。`)
+    } catch (error) { onToast(error instanceof Error ? error.message : '创建 Agent 失败', 'error') }
+    finally { setBusyId('') }
+  }
+
+  const renameAgent = async (event: FormEvent<HTMLFormElement>, agentId: string) => {
+    event.preventDefault()
+    const name = editingAgent?.name.trim()
+    if (!name || !editingAgent) return
+    setBusyId(agentId)
+    try {
+      await api(`/v1/agents/${agentId}`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ name }) })
+      setEditingAgent(null)
+      await loadOverview()
+      onToast('Agent 已改名。')
+    } catch (error) { onToast(error instanceof Error ? error.message : '改名失败', 'error') }
+    finally { setBusyId('') }
   }
 
   const removeMemory = async (event: FormEvent) => {
@@ -151,6 +185,13 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
     } catch (error) { onToast(error instanceof Error ? error.message : '删除失败', 'error') }
   }
 
+  const agentStats = (agent: Overview['agents'][number]) => [
+    `经验 ${agent.memory_count} 条`,
+    `公开 ${agent.public_count} 条`,
+    `反馈 ${agent.feedback_count} 次`,
+    agent.last_active_at ? `最近活跃 ${relTime(agent.last_active_at)}` : '尚无活动',
+  ].join(' · ')
+
   return <section className="view-head">
     <p className="kicker"><i></i>Console</p>
     <h1>{token ? '监督你的 Agent。' : '认领你的工作区。'}</h1>
@@ -160,12 +201,11 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
       <div className="mode-tabs" role="tablist">
         <button type="button" role="tab" aria-selected={accessMode === 'register'} className={accessMode === 'register' ? 'on' : ''} onClick={() => setAccessMode('register')}>创建账号</button>
         <button type="button" role="tab" aria-selected={accessMode === 'login'} className={accessMode === 'login' ? 'on' : ''} onClick={() => setAccessMode('login')}>登录</button>
-        <button type="button" role="tab" aria-selected={accessMode === 'claim'} className={accessMode === 'claim' ? 'on' : ''} onClick={() => setAccessMode('claim')}>认领工作区</button>
       </div>
 
       {accessMode === 'register' && <form className="panel" onSubmit={createFirstAccount}>
         <h2>创建账号与首个 Agent</h2>
-        <p className="hint">填写以下信息，系统会自动完成 Agent 注册与工作区认领。</p>
+        <p className="hint">填写以下信息，系统会自动完成 Agent 注册与工作区认领，之后直接进入工作区面板。</p>
         <label>第一个 Agent 的名称<input name="agent_name" defaultValue="my-first-agent" autoComplete="off" required /></label>
         <label>你的登录名<input name="login_name" placeholder="例如：admin" autoComplete="username" required /></label>
         <label>登录密码<input name="password" type="password" placeholder="至少8位，包含字母和数字" autoComplete="new-password" required minLength={8} /></label>
@@ -178,6 +218,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
         <label>登录名<input name="login_name" autoComplete="username" required /></label>
         <label>密码<input name="password" type="password" autoComplete="current-password" required /></label>
         <button className="submit-btn" disabled={loading}>登录</button>
+        <button type="button" className="link-btn" onClick={() => setAccessMode('claim')}>Agent 已在别处创建过？用认领码接管工作区 →</button>
       </form>}
 
       {accessMode === 'claim' && <form className="panel" onSubmit={claim}>
@@ -188,17 +229,21 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
         <label>新密码<input name="password" type="password" placeholder="至少8位，包含字母和数字" autoComplete="new-password" required minLength={8} /></label>
         <label>确认密码<input name="password_confirm" type="password" placeholder="再次输入密码" autoComplete="new-password" required minLength={8} /></label>
         <button className="submit-btn" disabled={loading}>完成认领</button>
+        <button type="button" className="link-btn" onClick={() => setAccessMode('login')}>← 返回登录</button>
       </form>}
     </div>}
 
     {setupSecrets && <section className="panel setup-card">
-      <p className="eyebrow">请现在保存</p>
-      <h2>{setupSecrets.agentKey ? '这两段信息分别给不同对象使用' : '新工作区邀请码'}</h2>
-      {setupSecrets.agentKey && <SecretValue label="Agent 访问密钥" help="交给刚创建的第一个 Agent：读取私有经验、写入经验与反馈。优先配置进环境变量，不要提交到代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey!, 'Agent 访问密钥')} />}
-      {setupSecrets.agentKey && <SecretValue multiline label="交接给 Agent 的完整信息" help="密钥本身不含服务地址，单独发密钥对方不知道去哪请求。把这段话整体发给 Agent 即可；若它与你不在同一网络，请先把地址替换为它可达的地址。" value={agentHandoff(setupSecrets.agentKey!)} onCopy={() => void copyText(agentHandoff(setupSecrets.agentKey!), 'Agent 接入信息')} />}
+      <p className="eyebrow">请现在保存 · 只显示这一次</p>
+      <h2>{setupSecrets.agentKey ? `${setupSecrets.agentName ?? 'Agent'} 的访问密钥` : '新工作区邀请码'}</h2>
+      {setupSecrets.agentKey && <SecretValue label="Agent 访问密钥" help="密钥不会再次显示，遗失时用「重发密钥」生成新的。优先配置进环境变量，不要提交到代码库。" value={setupSecrets.agentKey} onCopy={() => void copyText(setupSecrets.agentKey!, 'Agent 访问密钥')} />}
+      {setupSecrets.agentKey && <SecretValue multiline label="交接给 Agent 的完整信息" help="密钥本身不含服务地址，单独发密钥对方不知道去哪请求。把这段话整体发给 Agent 即可；若它与你不在同一网络，请先把地址替换为它可达的地址。" value={agentHandoff(setupSecrets.agentKey)} onCopy={() => void copyText(agentHandoff(setupSecrets.agentKey!), 'Agent 接入信息')} />}
       {setupSecrets.inviteCode && <SecretValue label="工作区邀请码" help="交给第二个或之后的 Agent。它能让新 Agent 加入同一个工作区，读取共享经验；不要给人类登录使用。" value={setupSecrets.inviteCode} onCopy={() => void copyText(setupSecrets.inviteCode!, '工作区邀请码')} />}
-      {setupSecrets.inviteCode && <SecretValue multiline label="交接给后续 Agent 的邀请信息" help="后续 Agent 用这段话自助接入：注册时带上邀请码即加入同一工作区，并从 skill.md 学会完整用法。" value={inviteHandoff(setupSecrets.inviteCode!)} onCopy={() => void copyText(inviteHandoff(setupSecrets.inviteCode!), 'Agent 邀请信息')} />}
+      {setupSecrets.inviteCode && <SecretValue multiline label="交接给后续 Agent 的邀请信息" help="后续 Agent 用这段话自助接入：注册时带上邀请码即加入同一工作区，并从 skill.md 学会完整用法。" value={inviteHandoff(setupSecrets.inviteCode)} onCopy={() => void copyText(inviteHandoff(setupSecrets.inviteCode!), 'Agent 邀请信息')} />}
       {setupSecrets.claimCode && !token && <SecretValue label="工作区认领码" help="首个 Agent 已创建，但账号注册未完成时使用它。填入上方「认领工作区」即可继续。" value={setupSecrets.claimCode} onCopy={() => void copyText(setupSecrets.claimCode!, '工作区认领码')} />}
+      <div className="setup-actions">
+        <button type="button" className="btn-sm" onClick={() => { setSetupSecrets(null); onToast('密钥信息已收起。密钥不会再次显示，遗失时请使用「重发密钥」。') }}>我已保存，收起</button>
+      </div>
     </section>}
 
     {overview && <>
@@ -206,6 +251,40 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
         <span className="console-summary">{overview.workspaces.length} 个工作区 · {overview.agents.length} 个 Agent · {overview.pending_memories.length} 条待审核</span>
         <button type="button" className="btn-sm" onClick={onLogout}>退出登录</button>
       </div>
+
+      {overview.workspaces.map(workspace => {
+        const workspaceAgents = overview.agents.filter(agent => agent.workspace_id === workspace.id)
+        return <section className="panel console-review" key={workspace.id}>
+          <div className="ws-head">
+            <h2>{workspace.name}</h2>
+            <span className="ws-policy">{workspace.publication_policy === 'manual' ? '每条经验由你确认公开' : 'Agent 申请公开后自动发布'}</span>
+          </div>
+          {workspaceAgents.map(agent => editingAgent?.id === agent.id
+            ? <form className="rename-row" key={agent.id} onSubmit={event => void renameAgent(event, agent.id)}>
+              <input value={editingAgent.name} autoFocus aria-label="Agent 新名称" onChange={event => setEditingAgent({ id: agent.id, name: event.target.value })} onKeyDown={event => { if (event.key === 'Escape') setEditingAgent(null) }} required maxLength={120} />
+              <button type="submit" className="btn-sm" disabled={busyId === agent.id || loading}>保存</button>
+              <button type="button" className="btn-sm" onClick={() => setEditingAgent(null)}>取消</button>
+            </form>
+            : <div className="kv-row" key={agent.id}>
+              <div>
+                <span className="name">{agent.name}</span>
+                <span className="meta-sub">{agentStats(agent)} · 创建于 {relTime(agent.created_at)}</span>
+              </div>
+              <div className="row-btns">
+                <button type="button" className="btn-sm" disabled={busyId === agent.id} onClick={() => setEditingAgent({ id: agent.id, name: agent.name })}>改名</button>
+                <button type="button" className="btn-sm key-btn" disabled={busyId === agent.id} onClick={() => void rotateAgentKey(agent.id, agent.name)}>{busyId === agent.id ? '处理中' : '重发密钥'}</button>
+              </div>
+            </div>)}
+          <form className="add-agent-row" onSubmit={event => void createAgent(event, workspace.id)}>
+            <input value={newAgentName} placeholder="新 Agent 的名称，例如 code-reviewer" aria-label="新 Agent 的名称" onChange={event => setNewAgentName(event.target.value)} maxLength={120} />
+            <button type="submit" className="btn-sm" disabled={busyId === 'add-agent' || loading}>{busyId === 'add-agent' ? '创建中' : '+ 添加 Agent'}</button>
+          </form>
+          <div className="row-btns ws-actions">
+            <button type="button" className="btn-sm" onClick={() => void updatePolicy(workspace.id, workspace.publication_policy === 'manual' ? 'auto' : 'manual')}>改为{workspace.publication_policy === 'manual' ? '自动公开' : '手动确认'}</button>
+            <button type="button" className="btn-sm" onClick={() => void rotateWorkspaceInvite(workspace.id, workspace.name)}>重发邀请码</button>
+          </div>
+        </section>
+      })}
 
       <section className="panel console-review">
         <h2>待审核经验</h2>
@@ -215,11 +294,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm 
           <div className="row-btns"><button type="button" className="btn-sm" onClick={() => void publish(item.id)}>确认公开</button></div>
         </div>)}
       </section>
-
-      <div className="console-grid">
-        <section className="panel"><h2>Agent</h2>{overview.agents.map(item => <div className="kv-row" key={item.id}><div><span className="name">{item.name}</span><span className="meta-sub">密钥不会再次显示；泄露或遗失时重发即可。</span></div><div className="row-btns"><button type="button" className="btn-sm" onClick={() => void rotateAgentKey(item.id, item.name)}>重发密钥</button></div></div>)}</section>
-        <section className="panel"><h2>工作区</h2>{overview.workspaces.map(item => <div className="kv-row" key={item.id}><div><span className="name">{item.name}</span><span className="meta-sub">公开策略：{item.publication_policy === 'manual' ? '每条经验由你确认' : 'Agent 申请公开后自动发布'}</span></div><div className="row-btns"><button type="button" className="btn-sm" onClick={() => void updatePolicy(item.id, item.publication_policy === 'manual' ? 'auto' : 'manual')}>改为{item.publication_policy === 'manual' ? '自动公开' : '手动确认'}</button><button type="button" className="btn-sm" onClick={() => void rotateWorkspaceInvite(item.id, item.name)}>重发邀请码</button></div></div>)}</section>
-      </div>
 
       <details className="advanced"><summary>高级：移除一条敏感记录</summary><p>输入记忆 ID 后，系统会清除其内容、证据和反馈。请只在泄露敏感内容时使用。</p><form onSubmit={removeMemory}><label>记忆 ID<input value={removeId} onChange={event => setRemoveId(event.target.value)} required /></label><button className="submit-btn danger">移除敏感内容</button></form></details>
       <details className="advanced"><summary>危险区：删除整个账号</summary><p>永久删除账号、全部工作区、Agent、记忆、证据、反馈与缺口，立即生效且无法恢复。需输入登录密码并在确认框填写 DELETE。</p><form onSubmit={deleteAccount}><label>登录密码<input type="password" value={deletePassword} onChange={event => setDeletePassword(event.target.value)} required /></label><label>输入 DELETE 确认<input value={deleteConfirmText} onChange={event => setDeleteConfirmText(event.target.value)} placeholder="DELETE" required /></label><button className="submit-btn danger">永久删除账号与全部数据</button></form></details>
