@@ -241,7 +241,15 @@ pub(crate) async fn developer_overview(
         "SELECT id, name, publication_policy, created_at, updated_at FROM workspaces WHERE developer_id = $1 ORDER BY created_at DESC",
     ).bind(developer.developer_id).fetch_all(&state.pool).await?;
     let agents = sqlx::query_as::<_, AgentOverview>(
-        "SELECT a.id, a.workspace_id, a.name, a.created_at FROM agents a JOIN workspaces w ON w.id = a.workspace_id WHERE w.developer_id = $1 AND a.revoked_at IS NULL ORDER BY a.created_at DESC",
+        "SELECT a.id, a.workspace_id, a.name, a.created_at, \
+         (SELECT count(*) FROM memories m WHERE m.author_agent_id = a.id AND m.removed_at IS NULL) AS memory_count, \
+         (SELECT count(*) FROM memories m WHERE m.author_agent_id = a.id AND m.removed_at IS NULL AND m.visibility = 'public') AS public_count, \
+         (SELECT count(*) FROM memory_feedback f WHERE f.agent_id = a.id) AS feedback_count, \
+         GREATEST(\
+             (SELECT max(m.created_at) FROM memories m WHERE m.author_agent_id = a.id), \
+             (SELECT max(f.created_at) FROM memory_feedback f WHERE f.agent_id = a.id)\
+         ) AS last_active_at \
+         FROM agents a JOIN workspaces w ON w.id = a.workspace_id WHERE w.developer_id = $1 AND a.revoked_at IS NULL ORDER BY a.created_at DESC",
     ).bind(developer.developer_id).fetch_all(&state.pool).await?;
     let pending_ids: Vec<Uuid> = sqlx::query(
         "SELECT m.id FROM memories m JOIN workspaces w ON w.id = m.workspace_id WHERE w.developer_id = $1 AND m.publication_requested_at IS NOT NULL AND m.visibility <> 'public' AND m.removed_at IS NULL ORDER BY m.publication_requested_at DESC",

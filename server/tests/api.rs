@@ -633,3 +633,121 @@ async fn unknown_memory_id_returns_not_found(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrations = "../migrations")]
+async fn console_agent_management_flow(pool: PgPool) {
+    let app = test_app(pool);
+    let registration = register(&app, "管理流程 Agent").await;
+    let api_key = registration["api_key"].as_str().unwrap().to_owned();
+    let claim_token = registration["claim_token"].as_str().unwrap().to_owned();
+    let workspace_id = registration["workspace_id"].as_str().unwrap().to_owned();
+
+    let created = send(
+        &app,
+        Method::POST,
+        "/v1/memories",
+        Some(&api_key),
+        Some(memory_input("控制台 Agent 统计的记忆")),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::OK);
+
+    let claim = send(
+        &app,
+        Method::POST,
+        "/v1/developers/claim",
+        None,
+        Some(json!({ "claim_token": claim_token, "login_name": "mgmt_dev", "password": "password123" })),
+    )
+    .await;
+    assert_eq!(claim.status(), StatusCode::OK);
+    let developer_token = payload(claim).await["developer_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let overview = send(
+        &app,
+        Method::GET,
+        "/v1/developer/overview",
+        Some(&developer_token),
+        None,
+    )
+    .await;
+    assert_eq!(overview.status(), StatusCode::OK);
+    let overview = payload(overview).await;
+    let agent = &overview["agents"][0];
+    assert_eq!(agent["memory_count"], 1);
+    assert_eq!(agent["public_count"], 0);
+    assert_eq!(agent["feedback_count"], 0);
+    assert!(agent["last_active_at"].as_str().is_some(), "写入过经验的 Agent 应有最近活跃时间");
+
+    let add = send(
+        &app,
+        Method::POST,
+        "/v1/agents",
+        Some(&developer_token),
+        Some(json!({ "workspace_id": workspace_id, "name": "控制台代建 Agent" })),
+    )
+    .await;
+    assert_eq!(add.status(), StatusCode::OK);
+    let add = payload(add).await;
+    assert!(add["api_key"].as_str().is_some());
+    assert!(add["claim_token"].as_null().is_some(), "代建 Agent 不应产生认领码");
+    let new_agent_id = add["agent_id"].as_str().unwrap().to_owned();
+
+    let rename = send(
+        &app,
+        Method::PATCH,
+        &format!("/v1/agents/{new_agent_id}"),
+        Some(&developer_token),
+        Some(json!({ "name": "改名后的 Agent" })),
+    )
+    .await;
+    assert_eq!(rename.status(), StatusCode::OK);
+    assert_eq!(payload(rename).await["name"], "改名后的 Agent");
+
+    let overview_after = send(
+        &app,
+        Method::GET,
+        "/v1/developer/overview",
+        Some(&developer_token),
+        None,
+    )
+    .await;
+    let overview_after = payload(overview_after).await;
+    let names: Vec<&str> = overview_after["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["name"].as_str())
+        .collect();
+    assert!(names.contains(&"改名后的 Agent"), "改名应反映在 overview 中");
+    let new_agent_stats = overview_after["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["name"] == "改名后的 Agent")
+        .unwrap();
+    assert_eq!(new_agent_stats["memory_count"], 0);
+
+    let rename_without_auth = send(
+        &app,
+        Method::PATCH,
+        &format!("/v1/agents/{new_agent_id}"),
+        None,
+        Some(json!({ "name": "未授权改名" })),
+    )
+    .await;
+    assert_eq!(rename_without_auth.status(), StatusCode::UNAUTHORIZED);
+
+    let add_to_foreign_workspace = send(
+        &app,
+        Method::POST,
+        "/v1/agents",
+        Some(&developer_token),
+        Some(json!({ "workspace_id": "22222222-2222-2222-2222-222222222222", "name": "越权 Agent" })),
+    )
+    .await;
+    assert_eq!(add_to_foreign_workspace.status(), StatusCode::FORBIDDEN);
+}

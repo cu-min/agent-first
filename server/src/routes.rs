@@ -1,7 +1,7 @@
 use axum::{
     Router,
     http::{Method, header},
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
 };
 use tower_http::{
     cors::CorsLayer,
@@ -14,7 +14,7 @@ use tower_http::{
 use crate::{
     config::AppConfig,
     handlers::{
-        agents::{register_agent, rotate_agent_key},
+        agents::{create_agent, register_agent, rename_agent, rotate_agent_key},
         developers::{
             claim_workspace, delete_developer_account, developer_overview, login,
             rotate_workspace_invite, update_publication_policy,
@@ -35,7 +35,7 @@ use crate::{
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(config.app_origin.clone())
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
     let security_headers = SetResponseHeaderLayer::if_not_present(
         header::CONTENT_SECURITY_POLICY,
@@ -52,6 +52,8 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
         .route("/.well-known/agent-first.json", get(discovery))
         .route("/v1/search", post(search))
         .route("/v1/agents/register", post(register_agent))
+        .route("/v1/agents", post(create_agent))
+        .route("/v1/agents/{id}", patch(rename_agent))
         .route("/v1/agents/{id}/keys/rotate", post(rotate_agent_key))
         .route("/v1/developers/claim", post(claim_workspace))
         .route("/v1/developers/login", post(login))

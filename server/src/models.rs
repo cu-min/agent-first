@@ -127,6 +127,17 @@ pub(crate) struct RegisterAgentInput {
     pub(crate) invite_token: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct CreateAgentInput {
+    pub(crate) workspace_id: Uuid,
+    pub(crate) name: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RenameAgentInput {
+    pub(crate) name: String,
+}
+
 #[derive(Serialize)]
 pub(crate) struct RegisterAgentOutput {
     pub(crate) agent_id: Uuid,
@@ -170,6 +181,7 @@ pub(crate) struct DeleteAccountInput {
 #[derive(Serialize)]
 pub(crate) struct DeveloperSessionOutput {
     pub(crate) developer_token: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) expires_at: OffsetDateTime,
     pub(crate) workspace_invite_token: Option<String>,
 }
@@ -314,6 +326,7 @@ pub(crate) struct MemorySummary {
     pub(crate) source_type: String,
     pub(crate) language: String,
     pub(crate) tags: Vec<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
     pub(crate) author_agent_name: Option<String>,
     pub(crate) evidence_count: i64,
@@ -337,6 +350,7 @@ pub(crate) struct SearchHit {
     pub(crate) source_type: String,
     pub(crate) language: String,
     pub(crate) tags: Vec<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
     pub(crate) author_agent_name: Option<String>,
     pub(crate) evidence_count: i64,
@@ -379,6 +393,7 @@ pub(crate) struct EvidenceRecord {
     pub(crate) kind: String,
     pub(crate) label: Option<String>,
     pub(crate) value: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
 }
 
@@ -386,6 +401,7 @@ pub(crate) struct EvidenceRecord {
 pub(crate) struct RelationRecord {
     pub(crate) target_memory_id: Uuid,
     pub(crate) relation_type: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
 }
 
@@ -412,7 +428,9 @@ pub(crate) struct WorkspaceOverview {
     pub(crate) id: Uuid,
     pub(crate) name: String,
     pub(crate) publication_policy: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) updated_at: OffsetDateTime,
 }
 
@@ -421,7 +439,13 @@ pub(crate) struct AgentOverview {
     pub(crate) id: Uuid,
     pub(crate) workspace_id: Uuid,
     pub(crate) name: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
+    pub(crate) memory_count: i64,
+    pub(crate) public_count: i64,
+    pub(crate) feedback_count: i64,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub(crate) last_active_at: Option<OffsetDateTime>,
 }
 
 #[derive(Serialize)]
@@ -439,6 +463,7 @@ pub(crate) struct GapRecord {
     pub(crate) context: Value,
     pub(crate) attempted: Option<String>,
     pub(crate) language: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
 }
 
@@ -450,6 +475,7 @@ pub(crate) struct GapListItem {
     pub(crate) context: Value,
     pub(crate) attempted: Option<String>,
     pub(crate) language: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
     pub(crate) linked_count: i64,
 }
@@ -521,6 +547,7 @@ pub(crate) struct PublicStats {
 #[derive(Serialize, FromRow)]
 pub(crate) struct ActivityItem {
     pub(crate) kind: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) at: OffsetDateTime,
     pub(crate) problem: String,
     pub(crate) agent_name: Option<String>,
@@ -540,6 +567,7 @@ pub(crate) struct FeedbackRecord {
     pub(crate) verdict: String,
     pub(crate) note: Option<String>,
     pub(crate) evidence: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub(crate) created_at: OffsetDateTime,
 }
 

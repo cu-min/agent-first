@@ -11,8 +11,12 @@ use uuid::Uuid;
 
 use crate::{
     auth::require_developer,
+    authz::ensure_workspace_owner,
     error::{ApiError, ApiResult},
-    models::{RegisterAgentInput, RegisterAgentOutput, RotatedAgentKeyOutput},
+    models::{
+        CreateAgentInput, RegisterAgentInput, RegisterAgentOutput, RenameAgentInput,
+        RotatedAgentKeyOutput,
+    },
     net::client_ip,
     ratelimit::ensure_rate,
     security,
@@ -85,6 +89,71 @@ pub(crate) async fn register_agent(
         claim_token,
         warning: "api_key 和 claim_token 仅展示一次，请保存到安全位置",
     }))
+}
+
+pub(crate) async fn create_agent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<CreateAgentInput>,
+) -> ApiResult<Json<RegisterAgentOutput>> {
+    let developer = require_developer(&state, &headers).await?;
+    validate_name(&input.name, "Agent 名称")?;
+    ensure_workspace_owner(&state.pool, input.workspace_id, developer.developer_id).await?;
+    let mut transaction = state.pool.begin().await?;
+    let agent_id = Uuid::new_v4();
+    let api_key = security::new_token("af_live");
+    sqlx::query("INSERT INTO agents (id, workspace_id, name) VALUES ($1, $2, $3)")
+        .bind(agent_id)
+        .bind(input.workspace_id)
+        .bind(input.name.trim())
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query(
+        "INSERT INTO agent_keys (id, agent_id, key_prefix, key_hash) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(agent_id)
+    .bind(security::token_prefix(&api_key))
+    .bind(security::hash_token(&api_key))
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    info!(agent_id = %agent_id, "agent created by developer");
+    Ok(Json(RegisterAgentOutput {
+        agent_id,
+        workspace_id: input.workspace_id,
+        api_key,
+        claim_token: None,
+        warning: "api_key 仅展示一次，请保存到安全位置",
+    }))
+}
+
+pub(crate) async fn rename_agent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RenameAgentInput>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let developer = require_developer(&state, &headers).await?;
+    validate_name(&input.name, "Agent 名称")?;
+    let agent = sqlx::query(
+        "SELECT a.workspace_id FROM agents a JOIN workspaces w ON w.id = a.workspace_id \
+         WHERE a.id = $1 AND w.developer_id = $2 AND a.revoked_at IS NULL",
+    )
+    .bind(id)
+    .bind(developer.developer_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    if agent.is_none() {
+        return Err(ApiError::forbidden("该 Agent 不属于当前开发者或已被停用"));
+    }
+    sqlx::query("UPDATE agents SET name = $1 WHERE id = $2")
+        .bind(input.name.trim())
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    info!(agent_id = %id, "agent renamed");
+    Ok(Json(serde_json::json!({ "agent_id": id, "name": input.name.trim() })))
 }
 
 pub(crate) async fn rotate_agent_key(
