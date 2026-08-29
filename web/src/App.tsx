@@ -12,7 +12,7 @@ const TOKEN_KEY = 'agent-first-developer-token'
 
 export default function App() {
   const route = useRoute()
-  const [developerToken, setDeveloperToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '')
+  const [developerToken, setDeveloperToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '')
   const [toasts, setToasts] = useState<Toast[]>([])
   const [confirmOptions, setConfirmOptions] = useState<ConfirmOptions | null>(null)
   const [legal, setLegal] = useState<'terms' | 'privacy' | 'contact' | null>(null)
@@ -44,11 +44,11 @@ export default function App() {
   }
 
   const handleAuth = (token: string) => {
-    sessionStorage.setItem(TOKEN_KEY, token)
+    localStorage.setItem(TOKEN_KEY, token)
     setDeveloperToken(token)
   }
   const handleLogout = () => {
-    sessionStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(TOKEN_KEY)
     setDeveloperToken('')
     addToast('已退出登录。')
   }
