@@ -2,15 +2,9 @@ import { FormEvent, useEffect, useState } from 'react'
 import { api, AgentRegistration, DeveloperSession, relTime, resultText, Overview, SetupSecrets } from '../lib/api'
 import { ConfirmOptions, SecretValue } from '../components/ui'
 import { navigate } from '../lib/router'
+import { checkPassword } from '../lib/password'
 
 type AccessMode = 'register' | 'login' | 'claim'
-
-const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/
-const checkPassword = (password: string, confirm: string, onToast: (text: string, kind?: 'info' | 'error') => void) => {
-  if (password !== confirm) { onToast('两次输入的密码不一致。', 'error'); return false }
-  if (!PASSWORD_RULE.test(password)) { onToast('密码至少 8 位，且需同时包含字母和数字。', 'error'); return false }
-  return true
-}
 
 export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm }: {
   token: string

@@ -158,4 +158,42 @@ mod tests {
         assert!(validate_password("12345678").is_err());
         assert!(validate_password("short1").is_err());
     }
+
+    #[test]
+    fn https_url_validation_enforces_scheme() {
+        assert!(validate_https_url("https://example.com/postmortem").is_ok());
+        assert!(validate_https_url("http://example.com/postmortem").is_err());
+        assert!(validate_https_url("ftp://example.com").is_err());
+        assert!(validate_https_url("不是一个链接").is_err());
+    }
+
+    #[test]
+    fn normalize_tags_trims_lowercases_and_dedupes() {
+        let tags = normalize_tags(vec![
+            "  Docker  ".to_owned(),
+            "docker".to_owned(),
+            "K8S".to_owned(),
+            "  ".to_owned(),
+        ])
+        .unwrap();
+        assert_eq!(tags, vec!["docker", "k8s"]);
+    }
+
+    #[test]
+    fn normalize_tags_caps_count_and_length() {
+        let thirteen: Vec<String> = (0..13).map(|index| format!("tag-{index}")).collect();
+        assert!(normalize_tags(thirteen).is_err());
+        assert!(normalize_tags(vec!["x".repeat(49)]).is_err());
+        assert!(normalize_tags(vec!["x".repeat(48)]).is_ok());
+    }
+
+    #[test]
+    fn token_prefix_keeps_first_sixteen_chars() {
+        let token = new_token("af_live");
+        assert_eq!(
+            token_prefix(&token),
+            token.chars().take(16).collect::<String>()
+        );
+        assert!(token_prefix(&token).starts_with("af_live"));
+    }
 }
