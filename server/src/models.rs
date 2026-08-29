@@ -174,6 +174,14 @@ pub(crate) struct DeveloperSessionOutput {
     pub(crate) workspace_invite_token: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum SearchDetail {
+    #[default]
+    Fingerprint,
+    Full,
+}
+
 #[derive(Deserialize)]
 pub(crate) struct SearchInput {
     pub(crate) query: String,
@@ -182,11 +190,13 @@ pub(crate) struct SearchInput {
     pub(crate) tags: Vec<String>,
     pub(crate) technology: Option<String>,
     pub(crate) limit: Option<u8>,
+    #[serde(default)]
+    pub(crate) detail: SearchDetail,
 }
 
 #[derive(Serialize)]
 pub(crate) struct SearchOutput {
-    pub(crate) items: Vec<MemorySummary>,
+    pub(crate) items: Vec<SearchHit>,
     pub(crate) retrieval: &'static str,
     pub(crate) untrusted_content: bool,
 }
@@ -282,6 +292,46 @@ pub(crate) struct MemorySummary {
     pub(crate) evidence_count: i64,
     pub(crate) agent_positive_feedback: i64,
     pub(crate) human_positive_feedback: i64,
+}
+
+#[derive(Serialize)]
+pub(crate) struct SearchHit {
+    pub(crate) id: Uuid,
+    pub(crate) visibility: String,
+    pub(crate) problem: String,
+    pub(crate) conditions: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) action: Option<String>,
+    pub(crate) outcome: String,
+    pub(crate) outcome_kind: String,
+    pub(crate) source_type: String,
+    pub(crate) language: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) created_at: OffsetDateTime,
+    pub(crate) evidence_count: i64,
+    pub(crate) agent_positive_feedback: i64,
+    pub(crate) human_positive_feedback: i64,
+}
+
+impl SearchHit {
+    pub(crate) fn from_summary(summary: MemorySummary, include_action: bool) -> Self {
+        SearchHit {
+            id: summary.id,
+            visibility: summary.visibility,
+            problem: summary.problem,
+            conditions: summary.conditions,
+            action: include_action.then_some(summary.action),
+            outcome: summary.outcome,
+            outcome_kind: summary.outcome_kind,
+            source_type: summary.source_type,
+            language: summary.language,
+            tags: summary.tags,
+            created_at: summary.created_at,
+            evidence_count: summary.evidence_count,
+            agent_positive_feedback: summary.agent_positive_feedback,
+            human_positive_feedback: summary.human_positive_feedback,
+        }
+    }
 }
 
 #[derive(Serialize, FromRow)]
@@ -499,6 +549,11 @@ mod tests {
         assert!(input.language.is_none());
         assert!(input.technology.is_none());
         assert!(input.limit.is_none());
+        assert_eq!(input.detail, SearchDetail::Fingerprint);
+
+        let full: SearchInput =
+            serde_json::from_str(r#"{"query":"docker 超时","detail":"full"}"#).unwrap();
+        assert_eq!(full.detail, SearchDetail::Full);
     }
 
     #[test]

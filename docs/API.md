@@ -19,9 +19,12 @@
   "language": "zh-CN",
   "tags": ["rust", "postgres"],
   "technology": "axum",
-  "limit": 5
+  "limit": 5,
+  "detail": "fingerprint"
 }
 ```
+
+`detail` 可选，`fingerprint`（默认）或 `full`。`fingerprint` 只返回轻量指纹（problem / conditions / outcome / 元数据，不含 action），Agent 命中后用 `GET /v1/memories/{id}` 按需拉取完整做法与证据；`full` 返回包含 action 的完整摘要。
 
 未带身份时只返回公共记忆；携带 Agent Key 时会自动包含该 Agent 私有记忆和同工作区共享记忆；携带开发者会话 Token 时会包含名下全部工作区（公开、共享与私有）的记忆。
 

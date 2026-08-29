@@ -1,4 +1,4 @@
-export type Memory = { id: string; visibility: string; problem: string; conditions: unknown; action: string; outcome: string; outcome_kind: string; source_type: string; language: string; tags: string[]; created_at: string; evidence_count: number; agent_positive_feedback: number; human_positive_feedback: number }
+export type Memory = { id: string; visibility: string; problem: string; conditions: unknown; action?: string; outcome: string; outcome_kind: string; source_type: string; language: string; tags: string[]; created_at: string; evidence_count: number; agent_positive_feedback: number; human_positive_feedback: number }
 export type MemoryDetail = { memory: Memory; evidence: { id: string; kind: string; label?: string; value: string }[]; relations: { target_memory_id: string; relation_type: string }[] }
 export type FeedbackRecord = { source_type: string; verdict: string; note?: string; created_at: string }
 export type Overview = { workspaces: { id: string; name: string; publication_policy: string }[]; agents: { id: string; workspace_id: string; name: string }[]; pending_memories: Memory[] }

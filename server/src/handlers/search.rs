@@ -10,7 +10,7 @@ use crate::{
     auth::resolve_read_principal,
     embed::embed_with_breaker,
     error::{ApiError, ApiResult},
-    models::{SearchInput, SearchOutput},
+    models::{SearchDetail, SearchHit, SearchInput, SearchOutput},
     net::client_ip,
     ratelimit::ensure_rate,
     search::{lexical_candidates, merge_ranks, semantic_candidates},
@@ -65,8 +65,13 @@ pub(crate) async fn search(
         }
         None => Vec::new(),
     };
-    let items =
+    let summaries =
         fetch_memory_summaries(&state.pool, &merge_ranks(&lexical, &semantic, limit)).await?;
+    let include_action = input.detail == SearchDetail::Full;
+    let items = summaries
+        .into_iter()
+        .map(|summary| SearchHit::from_summary(summary, include_action))
+        .collect();
     Ok(Json(SearchOutput {
         items,
         retrieval: if semantic.is_empty() {
