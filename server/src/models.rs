@@ -197,8 +197,17 @@ pub(crate) struct SearchInput {
 #[derive(Serialize)]
 pub(crate) struct SearchOutput {
     pub(crate) items: Vec<SearchHit>,
+    pub(crate) related_gaps: Vec<RelatedGap>,
     pub(crate) retrieval: &'static str,
     pub(crate) untrusted_content: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct RelatedGap {
+    pub(crate) id: Uuid,
+    pub(crate) question: String,
+    pub(crate) closed: bool,
+    pub(crate) score: f64,
 }
 
 #[derive(Deserialize)]
@@ -289,6 +298,7 @@ pub(crate) struct MemorySummary {
     pub(crate) language: String,
     pub(crate) tags: Vec<String>,
     pub(crate) created_at: OffsetDateTime,
+    pub(crate) author_agent_name: Option<String>,
     pub(crate) evidence_count: i64,
     pub(crate) agent_positive_feedback: i64,
     pub(crate) human_positive_feedback: i64,
@@ -308,6 +318,7 @@ pub(crate) struct SearchHit {
     pub(crate) language: String,
     pub(crate) tags: Vec<String>,
     pub(crate) created_at: OffsetDateTime,
+    pub(crate) author_agent_name: Option<String>,
     pub(crate) evidence_count: i64,
     pub(crate) agent_positive_feedback: i64,
     pub(crate) human_positive_feedback: i64,
@@ -327,6 +338,7 @@ impl SearchHit {
             language: summary.language,
             tags: summary.tags,
             created_at: summary.created_at,
+            author_agent_name: summary.author_agent_name,
             evidence_count: summary.evidence_count,
             agent_positive_feedback: summary.agent_positive_feedback,
             human_positive_feedback: summary.human_positive_feedback,
@@ -355,6 +367,7 @@ pub(crate) struct MemoryDetail {
     pub(crate) memory: MemorySummary,
     pub(crate) evidence: Vec<EvidenceRecord>,
     pub(crate) relations: Vec<RelationRecord>,
+    pub(crate) gaps: Vec<GapBacklink>,
     pub(crate) untrusted_content: bool,
 }
 
@@ -402,6 +415,32 @@ pub(crate) struct GapRecord {
     pub(crate) created_at: OffsetDateTime,
 }
 
+#[derive(Serialize, FromRow)]
+pub(crate) struct GapListItem {
+    pub(crate) id: Uuid,
+    pub(crate) visibility: String,
+    pub(crate) question: String,
+    pub(crate) context: Value,
+    pub(crate) attempted: Option<String>,
+    pub(crate) language: String,
+    pub(crate) created_at: OffsetDateTime,
+    pub(crate) linked_count: i64,
+}
+
+#[derive(Serialize)]
+pub(crate) struct GapListOutput {
+    pub(crate) items: Vec<GapListItem>,
+    pub(crate) total: i64,
+    pub(crate) limit: i64,
+    pub(crate) offset: i64,
+}
+
+#[derive(Serialize, FromRow)]
+pub(crate) struct GapBacklink {
+    pub(crate) id: Uuid,
+    pub(crate) question: String,
+}
+
 #[derive(Serialize)]
 pub(crate) struct GapDetail {
     pub(crate) gap: GapRecord,
@@ -420,6 +459,18 @@ pub(crate) struct ListMemoriesQuery {
     pub(crate) offset: Option<i64>,
     pub(crate) visibility: Option<String>,
     pub(crate) outcome_kind: Option<String>,
+    pub(crate) since: Option<String>,
+    pub(crate) until: Option<String>,
+    pub(crate) order_by: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ListGapsQuery {
+    pub(crate) limit: Option<i64>,
+    pub(crate) offset: Option<i64>,
+    pub(crate) visibility: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) status: Option<String>,
     pub(crate) since: Option<String>,
     pub(crate) until: Option<String>,
     pub(crate) order_by: Option<String>,
@@ -461,6 +512,7 @@ pub(crate) struct FeedbackRecord {
     pub(crate) source_type: String,
     pub(crate) verdict: String,
     pub(crate) note: Option<String>,
+    pub(crate) evidence: Option<String>,
     pub(crate) created_at: OffsetDateTime,
 }
 

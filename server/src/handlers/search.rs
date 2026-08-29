@@ -10,6 +10,7 @@ use crate::{
     auth::resolve_read_principal,
     embed::embed_with_breaker,
     error::{ApiError, ApiResult},
+    handlers::gaps::related_gaps_for_query,
     models::{SearchDetail, SearchHit, SearchInput, SearchOutput},
     net::client_ip,
     ratelimit::ensure_rate,
@@ -51,11 +52,12 @@ pub(crate) async fn search(
         &principal,
     )
     .await?;
-    let semantic = match embed_with_breaker(&state, &input.query).await {
+    let query_vector = embed_with_breaker(&state, &input.query).await;
+    let semantic = match &query_vector {
         Some(vector) => {
             semantic_candidates(
                 &state,
-                &vector,
+                vector,
                 language.as_deref(),
                 &tags,
                 technology.as_deref(),
@@ -63,6 +65,11 @@ pub(crate) async fn search(
             )
             .await?
         }
+        None => Vec::new(),
+    };
+    // 缺口常驻返回：不依赖经验命中数触发，语义向量缺失时为空数组
+    let related_gaps = match &query_vector {
+        Some(vector) => related_gaps_for_query(&state, vector, &principal).await?,
         None => Vec::new(),
     };
     let summaries =
@@ -74,6 +81,7 @@ pub(crate) async fn search(
         .collect();
     Ok(Json(SearchOutput {
         items,
+        related_gaps,
         retrieval: if semantic.is_empty() {
             "lexical"
         } else {

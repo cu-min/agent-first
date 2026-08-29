@@ -109,11 +109,12 @@ pub(crate) async fn fetch_memory_summaries(
     }
     let rows = sqlx::query_as::<_, MemorySummary>(
         "SELECT m.id, m.visibility, m.problem, m.conditions, m.action, m.outcome, m.outcome_kind, m.source_type, m.language, m.tags, m.created_at, \
+         a.name AS author_agent_name, \
          COUNT(DISTINCT e.id)::bigint AS evidence_count, \
          COUNT(DISTINCT f.id) FILTER (WHERE f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked'))::bigint AS agent_positive_feedback, \
          COUNT(DISTINCT f.id) FILTER (WHERE f.source_type = 'human' AND f.verdict IN ('useful', 'worked', 'partially_worked'))::bigint AS human_positive_feedback \
-         FROM memories m LEFT JOIN memory_evidence e ON e.memory_id = m.id LEFT JOIN memory_feedback f ON f.memory_id = m.id \
-         WHERE m.id = ANY($1) AND m.removed_at IS NULL GROUP BY m.id",
+         FROM memories m LEFT JOIN agents a ON a.id = m.author_agent_id LEFT JOIN memory_evidence e ON e.memory_id = m.id LEFT JOIN memory_feedback f ON f.memory_id = m.id \
+         WHERE m.id = ANY($1) AND m.removed_at IS NULL GROUP BY m.id, a.name",
     ).bind(ids).fetch_all(pool).await?;
     let mut by_id: HashMap<Uuid, MemorySummary> =
         rows.into_iter().map(|row| (row.id, row)).collect();

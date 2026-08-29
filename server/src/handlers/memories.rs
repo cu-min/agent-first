@@ -18,8 +18,9 @@ use crate::{
     },
     error::{ApiError, ApiResult},
     models::{
-        EvidenceRecord, FeedbackRecord, ListMemoriesQuery, MemoryCreatedOutput, MemoryDetail,
-        MemoryImportInput, MemoryImportedOutput, MemoryInput, MemoryListOutput, RelationRecord,
+        EvidenceRecord, FeedbackRecord, GapBacklink, ListMemoriesQuery, MemoryCreatedOutput,
+        MemoryDetail, MemoryImportInput, MemoryImportedOutput, MemoryInput, MemoryListOutput,
+        RelationRecord,
     },
     ratelimit::ensure_rate,
     state::{AppState, IMPORT_BATCH_MAXIMUM},
@@ -294,10 +295,27 @@ pub(crate) async fn get_memory(
     let relations = sqlx::query_as::<_, RelationRecord>(
         "SELECT target_memory_id, relation_type, created_at FROM memory_relations WHERE source_memory_id = $1 ORDER BY created_at ASC",
     ).bind(id).fetch_all(&state.pool).await?;
+    let (shared_workspaces, full_workspaces, agent_id) =
+        crate::auth::read_scope(&principal);
+    let gaps = sqlx::query_as::<_, GapBacklink>(
+        "SELECT g.id, g.question FROM gap_memory_links l JOIN experience_gaps g ON g.id = l.gap_id \
+         WHERE l.memory_id = $1 AND g.removed_at IS NULL AND (g.visibility = 'public' \
+           OR (cardinality($2::uuid[]) > 0 AND g.workspace_id = ANY($2::uuid[]) AND g.visibility = 'developer_shared') \
+           OR (cardinality($3::uuid[]) > 0 AND g.workspace_id = ANY($3::uuid[])) \
+           OR ($4::uuid IS NOT NULL AND g.author_agent_id = $4 AND g.visibility = 'agent_private')) \
+         ORDER BY l.created_at DESC",
+    )
+    .bind(id)
+    .bind(&shared_workspaces)
+    .bind(&full_workspaces)
+    .bind(agent_id)
+    .fetch_all(&state.pool)
+    .await?;
     Ok(Json(MemoryDetail {
         memory,
         evidence,
         relations,
+        gaps,
         untrusted_content: true,
     }))
 }
@@ -313,7 +331,7 @@ pub(crate) async fn list_memory_feedback(
         return Err(ApiError::not_found("记忆不存在或不可访问"));
     }
     let rows = sqlx::query_as::<_, FeedbackRecord>(
-        "SELECT source_type, verdict, note, created_at FROM memory_feedback WHERE memory_id = $1 ORDER BY created_at DESC LIMIT 100",
+        "SELECT source_type, verdict, note, evidence, created_at FROM memory_feedback WHERE memory_id = $1 ORDER BY created_at DESC LIMIT 100",
     )
     .bind(id)
     .fetch_all(&state.pool)

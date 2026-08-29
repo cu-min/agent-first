@@ -26,6 +26,7 @@ fn test_config() -> AppConfig {
         thresholds: SearchThresholds {
             lexical_min: 0.0,
             semantic_min: 0.0,
+            gap_min: 0.0,
         },
     }
 }
@@ -38,6 +39,7 @@ fn test_app(pool: PgPool) -> Router {
         SearchThresholds {
             lexical_min: 0.0,
             semantic_min: 0.0,
+            gap_min: 0.0,
         },
     )
     .unwrap();
@@ -200,6 +202,11 @@ async fn agent_memory_lifecycle_from_create_to_search(pool: PgPool) {
         "Docker Compose 启动顺序失败导致服务无法启动"
     );
     assert_eq!(detail["memory"]["language"], "zh-CN");
+    assert_eq!(
+        detail["memory"]["author_agent_name"],
+        "生命周期 Agent",
+        "记忆摘要应携带作者 Agent 名"
+    );
     assert_eq!(detail["untrusted_content"], true);
 
     let anonymous = send(
@@ -223,6 +230,10 @@ async fn agent_memory_lifecycle_from_create_to_search(pool: PgPool) {
     assert_eq!(search.status(), StatusCode::OK);
     let search = payload(search).await;
     assert_eq!(search["retrieval"], "lexical");
+    assert!(
+        search["related_gaps"].as_array().is_some(),
+        "related_gaps 字段需常驻返回（即使语义检索不可用也应为空数组）"
+    );
     let ids: Vec<&str> = search["items"]
         .as_array()
         .unwrap()
@@ -425,6 +436,176 @@ async fn memory_creation_is_rate_limited_per_agent(pool: PgPool) {
     assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
     let message = payload(blocked).await;
     assert_eq!(message["error"]["code"], "rate_limited");
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn gap_lifecycle_from_create_to_closed_solution(pool: PgPool) {
+    let app = test_app(pool);
+    let registration = register(&app, "缺口流程 Agent").await;
+    let api_key = registration["api_key"].as_str().unwrap().to_owned();
+
+    let gap = send(
+        &app,
+        Method::POST,
+        "/v1/gaps",
+        Some(&api_key),
+        Some(json!({
+            "question": "本地后端进程常驻时如何安全执行 cargo 集成测试",
+            "context": { "technologies": ["cargo", "Windows 11"] },
+            "attempted": "直接运行集成测试报 os error 5"
+        })),
+    )
+    .await;
+    assert_eq!(gap.status(), StatusCode::OK);
+    let gap = payload(gap).await;
+    let gap_id = gap["id"].as_str().unwrap().to_owned();
+
+    let anonymous_list = send(&app, Method::GET, "/v1/gaps", None, None).await;
+    assert_eq!(anonymous_list.status(), StatusCode::OK);
+    assert_eq!(payload(anonymous_list).await["total"], 0, "匿名不应看到 developer_shared 缺口");
+
+    let open_list = send(
+        &app,
+        Method::GET,
+        "/v1/gaps?status=open",
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(open_list.status(), StatusCode::OK);
+    let open_list = payload(open_list).await;
+    assert_eq!(open_list["total"], 1);
+    assert_eq!(open_list["items"][0]["linked_count"], 0);
+
+    let created = send(
+        &app,
+        Method::POST,
+        "/v1/memories",
+        Some(&api_key),
+        Some(json!({
+            "problem": "本地后端进程常驻时执行 cargo 集成测试被文件锁拒绝",
+            "conditions": { "technologies": ["cargo", "Windows 11"] },
+            "action": "先 Stop-Process 停后端再跑测试，测完重新拉起",
+            "outcome": "集成测试全部通过",
+            "outcome_kind": "success",
+            "language": "zh-CN",
+            "tags": ["cargo"],
+            "gap_id": gap_id
+        })),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::OK);
+    let memory_id = payload(created).await["id"].as_str().unwrap().to_owned();
+
+    let closed_list = send(
+        &app,
+        Method::GET,
+        "/v1/gaps?status=closed",
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(closed_list.status(), StatusCode::OK);
+    let closed_list = payload(closed_list).await;
+    assert_eq!(closed_list["total"], 1);
+    assert_eq!(closed_list["items"][0]["linked_count"], 1, "关联解法后缺口应转为已闭环");
+
+    let still_open = send(
+        &app,
+        Method::GET,
+        "/v1/gaps?status=open",
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(payload(still_open).await["total"], 0);
+
+    let gap_detail = send(
+        &app,
+        Method::GET,
+        &format!("/v1/gaps/{gap_id}"),
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(gap_detail.status(), StatusCode::OK);
+    let gap_detail = payload(gap_detail).await;
+    assert_eq!(
+        gap_detail["gap"]["question"],
+        "本地后端进程常驻时如何安全执行 cargo 集成测试"
+    );
+    assert_eq!(
+        gap_detail["gap"]["attempted"],
+        "直接运行集成测试报 os error 5"
+    );
+    let solutions: Vec<&str> = gap_detail["memories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect();
+    assert_eq!(solutions, vec![memory_id.as_str()], "缺口详情应包含关联解法");
+
+    let memory_detail = send(
+        &app,
+        Method::GET,
+        &format!("/v1/memories/{memory_id}"),
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(memory_detail.status(), StatusCode::OK);
+    let memory_detail = payload(memory_detail).await;
+    assert_eq!(memory_detail["gaps"][0]["id"].as_str().unwrap(), gap_id, "记忆详情应反向挂载缺口");
+
+    let feedback = send(
+        &app,
+        Method::POST,
+        &format!("/v1/memories/{memory_id}/feedback"),
+        Some(&api_key),
+        Some(json!({ "verdict": "worked", "note": "复用成功", "evidence": "cargo test 全绿" })),
+    )
+    .await;
+    assert_eq!(feedback.status(), StatusCode::OK);
+
+    let feedback_list = send(
+        &app,
+        Method::GET,
+        &format!("/v1/memories/{memory_id}/feedback"),
+        Some(&api_key),
+        None,
+    )
+    .await;
+    assert_eq!(feedback_list.status(), StatusCode::OK);
+    let feedback_list = payload(feedback_list).await;
+    assert_eq!(feedback_list[0]["source_type"], "agent");
+    assert_eq!(feedback_list[0]["verdict"], "worked");
+    assert_eq!(feedback_list[0]["evidence"], "cargo test 全绿");
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn gap_without_credentials_and_bad_filters_are_rejected(pool: PgPool) {
+    let app = test_app(pool);
+
+    let create = send(
+        &app,
+        Method::POST,
+        "/v1/gaps",
+        None,
+        Some(json!({ "question": "匿名不应创建缺口" })),
+    )
+    .await;
+    assert_eq!(create.status(), StatusCode::UNAUTHORIZED);
+
+    let unknown = send(
+        &app,
+        Method::GET,
+        "/v1/gaps/11111111-1111-1111-1111-111111111111",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test(migrations = "../migrations")]

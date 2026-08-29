@@ -43,6 +43,7 @@ impl AppState {
 pub struct SearchThresholds {
     pub lexical_min: f64,
     pub semantic_min: f64,
+    pub gap_min: f64,
 }
 
 fn build_http_client() -> Result<Client, reqwest::Error> {

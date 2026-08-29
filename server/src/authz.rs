@@ -1,5 +1,4 @@
-use sqlx::{PgPool, Row};
-use time::OffsetDateTime;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
@@ -16,6 +15,16 @@ pub(crate) async fn load_memory_access(pool: &PgPool, id: Uuid) -> ApiResult<Mem
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| ApiError::not_found("记忆不存在"))
+}
+
+pub(crate) async fn load_gap_access(pool: &PgPool, id: Uuid) -> ApiResult<MemoryAccessRow> {
+    sqlx::query_as::<_, MemoryAccessRow>(
+        "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM experience_gaps WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::not_found("经验缺口不存在"))
 }
 
 pub(crate) fn can_read_row(row: &MemoryAccessRow, agent: Option<&AgentPrincipal>) -> bool {
@@ -112,32 +121,16 @@ pub(crate) async fn can_read_gap_with_optional(
     id: Uuid,
     agent: Option<&AgentPrincipal>,
 ) -> ApiResult<bool> {
-    let row = sqlx::query(
-        "SELECT workspace_id, author_agent_id, visibility, removed_at FROM experience_gaps WHERE id = $1",
+    let Some(row) = sqlx::query_as::<_, MemoryAccessRow>(
+        "SELECT id, workspace_id, author_agent_id, visibility, removed_at FROM experience_gaps WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else {
+    .await?
+    else {
         return Ok(false);
     };
-    let removed: Option<OffsetDateTime> = row.get("removed_at");
-    if removed.is_some() {
-        return Ok(false);
-    }
-    let visibility: String = row.get("visibility");
-    if visibility == "public" {
-        return Ok(true);
-    }
-    let Some(agent) = agent else {
-        return Ok(false);
-    };
-    let workspace_id: Uuid = row.get("workspace_id");
-    let author_agent_id: Uuid = row.get("author_agent_id");
-    Ok(
-        (visibility == "developer_shared" && workspace_id == agent.workspace_id)
-            || (visibility == "agent_private" && author_agent_id == agent.agent_id),
-    )
+    Ok(can_read_row(&row, agent))
 }
 
 #[cfg(test)]
@@ -145,6 +138,7 @@ mod tests {
     use super::*;
     use crate::auth::ReadPrincipal;
     use crate::models::{AgentPrincipal, MemoryAccessRow};
+    use time::OffsetDateTime;
 
     fn row(visibility: &str, workspace_id: Uuid, author: Uuid) -> MemoryAccessRow {
         MemoryAccessRow {

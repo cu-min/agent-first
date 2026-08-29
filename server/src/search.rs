@@ -125,6 +125,33 @@ pub(crate) async fn semantic_candidates(
         .collect())
 }
 
+pub(crate) async fn gap_semantic_candidates(
+    state: &AppState,
+    vector: &str,
+    principal: &ReadPrincipal,
+    limit: usize,
+) -> ApiResult<Vec<(Uuid, f64)>> {
+    let (shared_workspaces, full_workspaces, agent_id) = read_scope(principal);
+    let rows = sqlx::query(
+        "SELECT g.id, 1 - (g.embedding <=> $4::vector) AS score FROM experience_gaps g \
+         WHERE g.removed_at IS NULL AND g.embedding IS NOT NULL \
+         AND (g.visibility = 'public' \
+           OR (cardinality($1::uuid[]) > 0 AND g.workspace_id = ANY($1::uuid[]) AND g.visibility = 'developer_shared') \
+           OR (cardinality($2::uuid[]) > 0 AND g.workspace_id = ANY($2::uuid[])) \
+           OR ($3::uuid IS NOT NULL AND g.author_agent_id = $3 AND g.visibility = 'agent_private')) \
+         ORDER BY g.embedding <=> $4::vector ASC LIMIT $5",
+    )
+    .bind(&shared_workspaces).bind(&full_workspaces).bind(agent_id)
+    .bind(vector).bind(limit as i64)
+    .fetch_all(&state.pool).await?;
+    let minimum = state.thresholds.gap_min;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<Uuid, _>("id"), row.get::<f64, _>("score")))
+        .filter(|(_, score)| *score >= minimum)
+        .collect())
+}
+
 pub(crate) fn merge_ranks(
     lexical: &[(Uuid, f64)],
     semantic: &[(Uuid, f64)],

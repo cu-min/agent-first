@@ -55,6 +55,9 @@ impl AppConfig {
             // 实测 0.35 会让抽象无关查询（如"古希腊哲学对现代的影响"）漏出弱相关结果；
             // 0.50 拦截该泄漏且语料内 Top-1 召回不降（2026-08-29 全查询组实测）。
             semantic_min: parse_score_env("SEARCH_SEMANTIC_MIN_SCORE", 0.50),
+            // 缺口阈值独立于经验：缺口为短文本，余弦分布更平（同域相邻 0.60-0.62，
+            // 无关上界 0.552，真命中下界 0.757，2026-08-29 四条真实缺口向量实测）。
+            gap_min: parse_score_env("SEARCH_GAP_MIN_SCORE", 0.65),
         };
         Ok(Self {
             database_url,

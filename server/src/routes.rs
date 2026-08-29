@@ -20,7 +20,7 @@ use crate::{
             rotate_workspace_invite, update_publication_policy,
         },
         feedback::create_feedback,
-        gaps::{create_gap, get_gap},
+        gaps::{create_gap, get_gap, list_gaps},
         memories::{
             create_memory, get_memory, import_memories, list_memories, list_memory_feedback,
             publish_memory, remove_memory,
@@ -76,7 +76,7 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
         )
         .route("/v1/memories/{id}/publish", post(publish_memory))
         .route("/v1/memories/{id}/remove", post(remove_memory))
-        .route("/v1/gaps", post(create_gap))
+        .route("/v1/gaps", get(list_gaps).post(create_gap))
         .route("/v1/gaps/{id}", get(get_gap))
         .fallback_service(static_service)
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
