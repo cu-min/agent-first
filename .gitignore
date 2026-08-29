@@ -13,3 +13,5 @@ $dest/
 seeds/_*.json
 seeds/_*.py
 /PROJECT_MEMORY.md
+.trae-html-share-packages/
+research/
