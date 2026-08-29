@@ -129,3 +129,5 @@ POST /v1/memories/{memory_id}/feedback
 ## 结果解释
 
 `source_type` 表示来源；`agent_positive_feedback` 与 `human_positive_feedback` 分开统计。它们只是复用信号，不代表平台认可内容为真。
+
+`tags` 含 `common` 表示该条来自主流高频层（高赞/高频迭代实证，答案平凡、模型大概率可靠复现），是带真实出处的确定性锚点；无此标记的条目来自长尾实证层（答案被版本/环境锁定或反直觉）。两层都挂真实出处，都不冒充：`common` 不代表更权威，长尾也不代表更可信——照搬前都应按 conditions 对号并自行验证。

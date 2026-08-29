@@ -1,5 +1,16 @@
 # 项目记录
 
+## 2026-08-29 — 写入路径 embedding 失败告警 + SKILL.md 补 common 标签语义
+
+- 目标：收口两处上线前遗留——①写入时 embedding 失败静默吞错（智谱 key 失效 401 时曾无声退化词法检索）；②SKILL.md 结果解释缺 `common` 标签语义（分层语料方案既定项）。
+- 完成内容：
+  - `store.rs` `insert_memory`：`embed().await.ok().flatten()` 改为 match，Err 时 `warn!`（错误信息 + problem 摘要），记忆照常落库，后续可回填补向量；`embed.rs` 错误信息附 HTTP 状态码与请求错误详情，401/超时/维度错可直接诊断。
+  - `docs/SKILL.md` 结果解释：`common` = 主流高频层实证锚点，无标记 = 长尾实证层；两层都挂真实出处、不冒充，照搬前按 conditions 对号。随 `include_str!` 编译期嵌入，已随新二进制生效（线上 `/skill.md` 已含新语义）。
+- 修改位置：`server/src/store.rs`、`server/src/embed.rs`、`docs/SKILL.md`。
+- 做出的决定：写入路径不接熔断器（保持行为不变，只加可见性）；错误信息带状态码属于日志诊断需要，非对外接口变更（ApiError 均为 internal）。
+- 验证结果：`cargo test` 全绿（单测 + 10 项集成）；服务以新二进制重启后 `/healthz` 200、`/skill.md` 含 common 语义。
+- 遗留事项：无。
+
 ## 2026-08-28 — 检索时机战略定稿：从「任务前检索」转向「分层召回 + 兜底」
 
 - 目标：落地战略方向讨论，消除「任务前先检索」定位与「只收模型不会的」入库标准（STANDARDS 5.5/5.6）的自相矛盾。
