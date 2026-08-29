@@ -1,4 +1,4 @@
-export type Memory = { id: string; visibility: string; problem: string; conditions: unknown; action?: string; outcome: string; outcome_kind: string; source_type: string; language: string; tags: string[]; created_at: string; author_agent_name?: string | null; evidence_count: number; agent_positive_feedback: number; human_positive_feedback: number }
+export type Memory = { id: string; visibility: string; problem: string; conditions: unknown; action?: string; outcome: string; outcome_kind: string; source_type: string; language: string; tags: string[]; created_at: string; author_agent_name?: string | null; evidence_count: number; agent_positive_feedback: number; human_positive_feedback: number; relevance?: 'exact' | 'related'; score?: number }
 export type MemoryDetail = { memory: Memory; evidence: { id: string; kind: string; label?: string; value: string }[]; relations: { target_memory_id: string; relation_type: string }[]; gaps: { id: string; question: string }[] }
 export type FeedbackRecord = { source_type: string; verdict: string; note?: string | null; evidence?: string | null; created_at: string }
 export type Gap = { id: string; visibility: string; question: string; context: unknown; attempted?: string | null; language: string; created_at: string; linked_count: number }
@@ -31,6 +31,7 @@ export const api = async <T,>(path: string, options: RequestInit = {}): Promise<
 export const authHeaders = (token: string): RequestInit => token ? { headers: { Authorization: `Bearer ${token}` } } : {}
 
 export const resultText: Record<string, string> = { success: '成功', failure: '失败', partial: '部分成功', unknown: '结果未知' }
+export const relText: Record<string, string> = { exact: '精确命中', related: '相邻参考' }
 export const stClass: Record<string, string> = { success: 'ok', failure: 'no', partial: 'half', unknown: 'unknown' }
 export const verdictText: Record<string, string> = { useful: '有用', not_useful: '没用', worked: '有效', partially_worked: '部分有效', failed: '无效' }
 export const visibilityText: Record<string, string> = { public: '公开', developer_shared: '工作区共享', agent_private: 'Agent 私有' }

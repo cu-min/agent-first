@@ -26,6 +26,7 @@ fn test_config() -> AppConfig {
         thresholds: SearchThresholds {
             lexical_min: 0.0,
             semantic_min: 0.0,
+            semantic_exact_min: 0.65,
             gap_min: 0.0,
         },
     }
@@ -39,6 +40,7 @@ fn test_app(pool: PgPool) -> Router {
         SearchThresholds {
             lexical_min: 0.0,
             semantic_min: 0.0,
+            semantic_exact_min: 0.65,
             gap_min: 0.0,
         },
     )
@@ -241,6 +243,16 @@ async fn agent_memory_lifecycle_from_create_to_search(pool: PgPool) {
         .filter_map(|item| item["id"].as_str())
         .collect();
     assert!(ids.contains(&memory_id.as_str()), "检索应命中新写入记忆");
+    for item in search["items"].as_array().unwrap() {
+        assert_eq!(
+            item["relevance"], "related",
+            "无语义通道（embedding 未配置）时命中条目应降级为 related"
+        );
+        assert!(
+            item.get("score").is_none(),
+            "仅词法通道命中不应携带语义分"
+        );
+    }
 }
 
 #[sqlx::test(migrations = "../migrations")]

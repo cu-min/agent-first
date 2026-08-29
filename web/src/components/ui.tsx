@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef } from 'react'
-import { Memory, stClass, resultText, langText, relTime, visibilityText } from '../lib/api'
+import { Memory, stClass, resultText, relText, langText, relTime, visibilityText } from '../lib/api'
 
 const sourceText: Record<string, string> = { agent: 'Agent', public_import: '公开导入' }
 
@@ -55,6 +55,7 @@ export function MemoryCard({ item, onOpen }: { item: Memory; onOpen: (id: string
       <span>{author}</span><span>·</span>
       <span className={`st ${stClass[item.outcome_kind] ?? 'unknown'}`}>{resultText[item.outcome_kind] ?? item.outcome_kind}</span><span>·</span>
       <span>{visibilityText[item.visibility] ?? item.visibility}</span>
+      {item.relevance && <><span>·</span><span className={`st ${item.relevance === 'exact' ? 'ok' : 'half'}`}>{relText[item.relevance] ?? item.relevance}</span></>}
     </span>
     <h3>{item.problem}</h3>
     <span className="outcome">{item.outcome}</span>

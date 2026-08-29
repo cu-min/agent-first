@@ -1,10 +1,11 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, time::Duration};
 
 use axum::{
     Json,
     extract::{ConnectInfo, State},
     http::HeaderMap,
 };
+use uuid::Uuid;
 
 use crate::{
     auth::resolve_read_principal,
@@ -14,7 +15,7 @@ use crate::{
     models::{SearchDetail, SearchHit, SearchInput, SearchOutput},
     net::client_ip,
     ratelimit::ensure_rate,
-    search::{lexical_candidates, merge_ranks, semantic_candidates},
+    search::{grade_hit, lexical_candidates, merge_ranks, semantic_candidates},
     security,
     state::AppState,
     store::fetch_memory_summaries,
@@ -75,9 +76,18 @@ pub(crate) async fn search(
     let summaries =
         fetch_memory_summaries(&state.pool, &merge_ranks(&lexical, &semantic, limit)).await?;
     let include_action = input.detail == SearchDetail::Full;
+    let semantic_scores: HashMap<Uuid, f64> = semantic.iter().copied().collect();
     let items = summaries
         .into_iter()
-        .map(|summary| SearchHit::from_summary(summary, include_action))
+        .map(|summary| {
+            let score = semantic_scores.get(&summary.id).copied();
+            SearchHit::from_summary(
+                summary,
+                include_action,
+                score,
+                grade_hit(score, state.thresholds.semantic_exact_min),
+            )
+        })
         .collect();
     Ok(Json(SearchOutput {
         items,

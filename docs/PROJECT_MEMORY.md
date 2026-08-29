@@ -45,25 +45,31 @@
 
 ## 变更记录
 
-### 2026-08-29（分层语料批量导入至 500-600 条目标，进行中·中断点）
+### 2026-08-29（检索相似度分级上线：exact/related，泄漏 gap 闭环，未提交）
 
-**目标**：按分层语料方案把公开记忆从 125 条扩到 500-600 条。任务未完成，正在中断点暂停。
+**问题**：tech_absent 负例（查 K8s 但语料只有 Docker）12/12 全泄漏——相邻域语义分与真命中边界重叠（0.644 vs 0.65+），单一阈值切不开，Agent 无法区分「有经验」和「硬凑的参考」。
 
-**进度节点（当前库内：公开 457 / 全部 608 / 缺口 4）**
+**标定**（`research/_probe_grading.py`，117 条评测集直连 pgvector）：真命中分中位 0.759、>=0.65 覆盖 88/93；tech_absent 泄漏 top1 上界 0.644；non_tech 泄漏走词法通道（语义分 <0.50）。**exact 阈值定 0.65**，泄漏全拦截、正例覆盖 95%。
 
-| 层 | 原料 | 蒸馏产出 | 入库 | 累计公开 |
-|---|---|---|---|---|
-| common 初始 | — | — | — | 125（含 22 真实种子 + core/common 第一批） |
-| core_mix | 246 条混合栈 | 82 条（16 批） | 82 | 390 |
-| common v3 | 94 条 | 69（去重 2 + 脱敏 1 → 67 条） | 67 | 457 |
+**实现**（零数据库迁移，纯查询期计算）：
+- `SearchThresholds` 新增 `semantic_exact_min`（默认 0.65，env `SEARCH_SEMANTIC_EXACT_MIN_SCORE`）
+- `POST /v1/search` 每条命中新增 `relevance`（exact/related）与 `score`（语义余弦，仅词法命中时省略）；RRF 排名不变，纯加标注
+- 分级规则 `search.rs::grade_hit`：语义分 >= exact_min 判 exact；无语义分（词法单通道）或低于阈值一律 related
+- 前端 `MemoryCard` 徽标（复用 `.st ok/half`）+ 经验库检索结果行「无精确命中，以下均为相邻参考」提示
+- `eval/run_eval.py` 负例指标升级为分级感知：空返回 / 全 related（分级拦截）/ exact 泄漏三档
+- 文档：API.md 检索节、SKILL.md 结果解释节（含 rebuild 生效）
 
-**core v3 层（当前中断点）**：`_so_core_v3_pool.json` / `_so_raw_core_v3.json`（283 条含采纳回答）待蒸馏；`_view_core_v3_001_016.json`（批次 1，16 条，Spring Boot/PostgreSQL/Hibernate-envers 主题）已生成视图文件、**尚未蒸馏**。剩余还需蒸馏约 60-100 条达标 500-600 后再导入。
+**验证**：单测 60 + 集成 10 全绿（新增 3 项）；评测 `grading_live_v2`：**exact 泄漏 0/24**（此前 tech_absent 12/12）、正例 hit@1 81.7% / hit@5 94.6% / MRR 0.869 与改前完全一致；线上实测 K8s/MySQL 死锁查询全部 related 带低分、真命中标 exact。
 
-**方法论（沿用已定，勿回退）**：三档分拣（core=版本/环境锁定或反直觉，common=平凡解法，drop=弃）启发式直判，盲测降级为小样校准；失真数据严格按 STANDARDS 第 5 节铁律（真实可溯源 + evidence），脱敏优先（`_find_sensitive.py`）避免触发后端敏感拦截 HTTP 400；导入前 `dedup_check.py --prune` 同题去重，批次导入 100 条/次上限需分批。
+**设计语义**：不删 related 结果（保护 cross 语言召回），靠标注让 Agent 自行取舍；全 related 时引导走 gap 流程而非硬套参考。
 
-**所选种子流水线**：`take_batch.py` 从 `_so_core_v3_pool.json` 取批生成视图 → 对话内蒸馏（14 条/批）→ `filter.py --check-only` 校验 → 合并 → `dedup_check.py` → 批量导入 API（`.no_proxy()` + `Authorization: Bearer`）。
+### 2026-08-29（分层语料批量导入完成：公开 500 条，core v3 五批蒸馏）
 
-**下一步（恢复本任务时）**：①蒸馏 core v3 批次 001-016 → 持续蒸馏至公开总量 ≈500-600；②全部导入后跑 `eval/run_eval.py` 117 条评测集复核检索质量；③另起线补约 500 条中文经验（用户既定）。
+（前情：目标 500-600 条，中断于 core v3 批次 1 视图已生成未蒸馏。本任务已完成，详见上条分级记录同日的评测。）
+
+**完成情况**：core v3 蒸馏 5 批（001-072，Spring Boot/Docker/Node/PM2/Bluemix 主题）共 52 条入库，公开记忆 457 → **500 条**，达目标区间下限。每批均过 filter.py 校验 + dedup_check.py 去重预检。评测 `core_v3_done`：hit@1 81.7% / hit@5 94.6% / MRR 0.869，与 308 条基线持平，语料 +60% 无退化。
+
+**剩余原料**：`_so_core_v3_pool.json` 尚有 211 条未蒸馏（想往 600 靠可续批）；中文语料线待启动（见 `seeds/CHINESE_CORPUS_PLAN.md`）。
 
 ### 2026-08-29（缺口融入经验网络全链路上线，提交 `d6fde91`/`d66ca7f`/`2af9c23`，已推送）
 

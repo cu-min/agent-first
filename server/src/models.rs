@@ -210,6 +210,23 @@ pub(crate) struct RelatedGap {
     pub(crate) score: f64,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SearchRelevance {
+    Exact,
+    Related,
+}
+
+#[cfg(test)]
+impl SearchRelevance {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::Related => "related",
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub(crate) struct MemoryInput {
     pub(crate) problem: String,
@@ -312,6 +329,9 @@ pub(crate) struct SearchHit {
     pub(crate) conditions: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) score: Option<f64>,
+    pub(crate) relevance: SearchRelevance,
     pub(crate) outcome: String,
     pub(crate) outcome_kind: String,
     pub(crate) source_type: String,
@@ -325,13 +345,20 @@ pub(crate) struct SearchHit {
 }
 
 impl SearchHit {
-    pub(crate) fn from_summary(summary: MemorySummary, include_action: bool) -> Self {
+    pub(crate) fn from_summary(
+        summary: MemorySummary,
+        include_action: bool,
+        score: Option<f64>,
+        relevance: SearchRelevance,
+    ) -> Self {
         SearchHit {
             id: summary.id,
             visibility: summary.visibility,
             problem: summary.problem,
             conditions: summary.conditions,
             action: include_action.then_some(summary.action),
+            score,
+            relevance,
             outcome: summary.outcome,
             outcome_kind: summary.outcome_kind,
             source_type: summary.source_type,
@@ -569,6 +596,11 @@ mod tests {
         FeedbackVerdict::Worked => "worked",
         FeedbackVerdict::PartiallyWorked => "partially_worked",
         FeedbackVerdict::Failed => "failed",
+    ]);
+
+    snake_case_round_trip!(search_relevance_round_trips, SearchRelevance, [
+        SearchRelevance::Exact => "exact",
+        SearchRelevance::Related => "related",
     ]);
 
     #[test]

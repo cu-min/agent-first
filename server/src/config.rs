@@ -58,6 +58,10 @@ impl AppConfig {
             // 缺口阈值独立于经验：缺口为短文本，余弦分布更平（同域相邻 0.60-0.62，
             // 无关上界 0.552，真命中下界 0.757，2026-08-29 四条真实缺口向量实测）。
             gap_min: parse_score_env("SEARCH_GAP_MIN_SCORE", 0.65),
+            // 相似度分级：>= 该值判 exact（高置信命中），低于判 related（相邻参考）。
+            // 2026-08-29 标定：117 条评测集真命中分中位 0.759、>=0.65 覆盖 88/93；
+            // tech_absent 泄漏项 top1 上界 0.644，0.65 恰好全部拦为 related。
+            semantic_exact_min: parse_score_env("SEARCH_SEMANTIC_EXACT_MIN_SCORE", 0.65),
         };
         Ok(Self {
             database_url,

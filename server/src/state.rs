@@ -43,6 +43,7 @@ impl AppState {
 pub struct SearchThresholds {
     pub lexical_min: f64,
     pub semantic_min: f64,
+    pub semantic_exact_min: f64,
     pub gap_min: f64,
 }
 

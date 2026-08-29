@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::{
     auth::{ReadPrincipal, read_scope},
     error::ApiResult,
+    models::SearchRelevance,
     state::AppState,
 };
 
@@ -152,6 +153,15 @@ pub(crate) async fn gap_semantic_candidates(
         .collect())
 }
 
+/// 按语义余弦分给命中条目分级：高于 exact 阈值的是高置信命中（exact），
+/// 其余（含仅词法通道命中、无语义分）一律视为相邻参考（related）。
+pub(crate) fn grade_hit(semantic_score: Option<f64>, exact_min: f64) -> SearchRelevance {
+    match semantic_score {
+        Some(score) if score >= exact_min => SearchRelevance::Exact,
+        _ => SearchRelevance::Related,
+    }
+}
+
 pub(crate) fn merge_ranks(
     lexical: &[(Uuid, f64)],
     semantic: &[(Uuid, f64)],
@@ -215,6 +225,18 @@ mod tests {
         assert!(flattened.contains("16"));
         assert!(flattened.contains("true"));
         assert!(!flattened.contains("null_field"));
+    }
+
+    #[test]
+    fn grade_hit_marks_exact_at_or_above_threshold() {
+        assert_eq!(grade_hit(Some(0.65), 0.65), SearchRelevance::Exact);
+        assert_eq!(grade_hit(Some(0.87), 0.65), SearchRelevance::Exact);
+    }
+
+    #[test]
+    fn grade_hit_marks_related_below_threshold_or_without_score() {
+        assert_eq!(grade_hit(Some(0.644), 0.65), SearchRelevance::Related);
+        assert_eq!(grade_hit(None, 0.65), SearchRelevance::Related);
     }
 
     #[test]

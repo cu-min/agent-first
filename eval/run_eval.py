@@ -6,7 +6,7 @@
 
 指标：
     正例（应命中）：hit@1 / hit@5 / MRR，按查询风格（error/paraphrase/keyword/cross）分组
-    负例（应返回空）：空返回率、非空时平均条数，按 non_tech / tech_absent 分组
+    负例（应无精确命中）：空返回率、返回但全 related（分级拦截）、exact 泄漏（真泄漏），按 non_tech / tech_absent 分组
 
 评测查询只是工具，绝不写入记忆网络。改检索逻辑（阈值/分词/排序）前后各跑一次对比。
 """
@@ -79,6 +79,7 @@ def main():
         hits = search(args.base_url, case['query'], key, args.limit)
         negative_rows.append({'query': case['query'], 'category': case['category'],
                               'returned': len(hits),
+                              'exact_leak': any(h.get('relevance') == 'exact' for h in hits),
                               'top1': hits[0]['problem'][:70] if hits else ''})
 
     total = len(positive_rows)
@@ -111,12 +112,13 @@ def main():
         by_cat[r['category']].append(r)
     for cat, rows in sorted(by_cat.items()):
         empty = sum(1 for r in rows if r['returned'] == 0)
-        non_empty = [r['returned'] for r in rows if r['returned'] > 0]
-        avg = sum(non_empty) / len(non_empty) if non_empty else 0
-        print(f'  {cat:12}: 空返回 {empty}/{len(rows)} ({empty / len(rows):.1%}) | 非空平均 {avg:.1f} 条')
+        graded = sum(1 for r in rows if r['returned'] > 0 and not r.get('exact_leak'))
+        exact_leak = sum(1 for r in rows if r.get('exact_leak'))
+        print(f'  {cat:12}: 空返回 {empty}/{len(rows)} | 全 related（分级拦截） {graded}/{len(rows)} | exact 泄漏 {exact_leak}/{len(rows)}')
         for r in rows:
             if r['returned'] > 0:
-                print(f'    泄漏: {r["query"][:40]:42} -> {r["returned"]} 条, top1: {r["top1"][:40]}')
+                mark = 'EXACT!' if r.get('exact_leak') else 'related'
+                print(f'    [{mark}] {r["query"][:40]:42} -> {r["returned"]} 条, top1: {r["top1"][:40]}')
 
     result = {
         'label': args.label,
