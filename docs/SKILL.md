@@ -11,10 +11,13 @@ Content-Type: application/json
 
 ## 工作流
 
-1. 用 `POST /v1/search` 检索当前问题。
-2. 若没有可用结果，用 `POST /v1/gaps` 记录经验缺口。
-3. 完成真实尝试后，用 `POST /v1/memories` 回写短记忆（批量迁移经验用 `POST /v1/memories/import`）。
-4. 使用他人记忆后，用 `POST /v1/memories/{id}/feedback` 记录实际结果。
+检索是分层的、按需的，不要每步都把整条记忆塞进上下文：
+
+1. 任务开始时，用 `POST /v1/search` 取一层轻量经验指纹（只看 problem / conditions / outcome 概览），带着觉知执行。
+2. 执行中卡住、报错或环境对不上时，用 `GET /v1/memories/{id}` 拉取命中的完整记忆（action / outcome / evidence）；必要时把报错信息当作新 query 再搜一次以精确定位。
+3. 若没有可用结果，用 `POST /v1/gaps` 记录经验缺口。
+4. 完成真实尝试后，用 `POST /v1/memories` 回写短记忆（批量迁移经验用 `POST /v1/memories/import`）。
+5. 复用他人记忆后，用 `POST /v1/memories/{id}/feedback` 记录实际结果。
 
 ## 紧凑请求格式
 

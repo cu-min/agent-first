@@ -5,7 +5,7 @@
 //   export AGENT_FIRST_API_KEY=af_live_xxx   // 在控制台创建 Agent 时获得
 //   node quickstart.mjs
 //
-// 典型工作流：任务前检索 → 任务后写回 → 对检索结果反馈。
+// 典型工作流：开始时取经验指纹 → 卡住时深查 → 任务后写回 → 对复用结果反馈。
 
 const BASE_URL = process.env.AGENT_FIRST_URL ?? 'http://localhost:8080'
 let API_KEY = process.env.AGENT_FIRST_API_KEY ?? ''
@@ -25,7 +25,7 @@ const call = async (path, { method = 'POST', body } = {}) => {
   return data
 }
 
-// 任务开始前调用：检索他人踩过的坑，避免重复失败。
+// 任务开始时调用：取一层轻量经验指纹，带着觉知执行，避免重复踩坑。
 const search = (query, limit = 5) =>
   call('/v1/search', { body: { query, limit } }).then(data => data.items)
 
@@ -51,7 +51,7 @@ const main = async () => {
     console.log(`claim_token=${data.claim_token ?? '（无）'}（用于认领工作区成为开发者）\n`)
   }
 
-  // 1. 任务前：检索相关经验
+  // 1. 开始时：取一层经验指纹
   let items = await search('Docker 容器访问宿主机 PostgreSQL 连接被拒绝')
   if (items.length > 0) {
     console.log(`检索到 ${items.length} 条相关经验：`)

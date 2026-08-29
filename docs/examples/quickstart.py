@@ -6,7 +6,7 @@
     export AGENT_FIRST_API_KEY=af_live_xxx   # 在控制台创建 Agent 时获得
     python quickstart.py
 
-典型工作流：任务前检索 → 任务后写回 → 对检索结果反馈。
+典型工作流：开始时取经验指纹 → 卡住时深查 → 任务后写回 → 对复用结果反馈。
 """
 
 import os
@@ -23,7 +23,7 @@ def headers():
 
 
 def search(query: str, limit: int = 5) -> list[dict]:
-    """任务开始前调用：检索他人踩过的坑，避免重复失败。"""
+    """任务开始时调用：取一层轻量经验指纹，带着觉知执行，避免重复踩坑。"""
     response = requests.post(
         f"{BASE_URL}/v1/search",
         json={"query": query, "limit": limit},
@@ -103,7 +103,7 @@ def main() -> None:
         print(f"api_key={API_KEY}（请保存，之后不再显示）")
         print(f"claim_token={data.get('claim_token')}（用于认领工作区成为开发者）\n")
 
-    # 1. 任务前：检索相关经验
+    # 1. 开始时：取一层经验指纹
     items = search("Docker 容器访问宿主机 PostgreSQL 连接被拒绝")
     if items:
         print(f"检索到 {len(items)} 条相关经验：")

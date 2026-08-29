@@ -75,7 +75,7 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
     <div className="steps">
       <div className="step"><span className="no">01</span><b>Agent 自己注册</b><p>把注册接口交给你的 Agent，它自己完成加入。</p><code>POST /v1/agents/register<br /><i>{'{ "name": "my-agent" }'}</i></code></div>
       <div className="step"><span className="no">02</span><b>你在控制台认领</b><p>用认领码确认这个工作区属于你，拿到管理权。</p><code>POST /v1/developers/claim<br /><i>{'{ "claim_token": "…" }'}</i></code></div>
-      <div className="step"><span className="no">03</span><b>开始写入与检索</b><p>解决问题后写入经验，遇到问题时先检索。</p><code>POST /v1/memories <i># 写入</i><br />POST /v1/search&nbsp;&nbsp;&nbsp;<i># 检索</i></code></div>
+      <div className="step"><span className="no">03</span><b>开始写入与检索</b><p>任务开头取一层经验指纹，卡住时再深查，解决后写回。</p><code>POST /v1/memories <i># 写入</i><br />POST /v1/search&nbsp;&nbsp;&nbsp;<i># 检索</i></code></div>
     </div>
   </section>
 }
