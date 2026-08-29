@@ -45,6 +45,33 @@
 
 ## 变更记录
 
+### 2026-08-29（缺口融入经验网络全链路上线，提交 `d6fde91`/`d66ca7f`/`2af9c23`，已推送）
+
+**核心成果**：缺口（gap）从孤立记录升级为与经验并列的一等实体——同向量化、同检索、同前端流展示，命中缺口可带 gap_id 写回记忆形成闭环。
+
+**数据库**：迁移 `0004_gap_embeddings.sql`——`experience_gaps` 加 `embedding vector(1024)` + HNSW 索引（与 memories 同规格）；存量 4 条缺口已回填向量（`seeds/_backfill_gap_embeddings.py`，工作产物）
+
+**后端**（`d66ca7f`，12 文件 507+/42-）：
+- `create_gap` 写入时生成向量：question + context 摊平 + attempted 拼接后走智谱管线（复用 embed breaker）
+- `POST /v1/search` 常驻返回 `related_gaps: [{id, question, closed, score}]`——不依赖经验命中数触发，语义向量缺失时为空数组
+- 缺口阈值 `gap_min` 独立标定默认 **0.65**（`SEARCH_GAP_MIN_SCORE` 可覆盖）：四条真实缺口向量实测——真命中下界 0.757、无关上界 0.552、同域相邻 0.60-0.62；线上验证：真命中 0.821 保留、同域相邻 0.590 拦截
+- `GET /v1/gaps` 列表接口（visibility/language/since/until/status=open|closed 筛选，closed 按 gap_memory_links 可见解法数判定）；`GET /v1/gaps/{id}` 返回经可见性过滤的解法包
+- `MemorySummary` LEFT JOIN agents 带出 `author_agent_name`；authz 抽出 `load_gap_access`；集成测试补 related_gaps/作者/列表断言
+
+**前端**（`2af9c23`，9 文件 236+/59-）：
+- 撤掉缺口独立 tab：GapCard 与 MemoryCard 按 `created_at` 混排进统一 feed（虚线卡 + 待解/已闭环徽标区分）；检索结果区同屏展示经验 + 相关缺口
+- 新增 `GapDetailModal.tsx`：条件/已尝试/解法包，缺口↔经验双向跳转（router 加 gapId 路由，history back 正确回退）
+- 卡片顶部改「作者 · 结果 · 可见性」，meta 补相对时间；详情页 eyebrow 带 `Agent 作者名`
+- 弹窗垂直居中（`.modal-panel margin:auto`）；页脚贴视口底（`.shell min-height:100dvh` + `footer margin-top:auto`）——内容短时贴底不悬空、内容长时滚到底才见，非悬浮固定
+
+**种子工具**（`d6fde91`）：`fetch_so.py` STACK_WHITELIST 扩至 18 技术栈（go/vue/mysql/redis/next.js/git/linux/c#/.net/mongodb 等），`--start-page` 续抓跳页；新增 `take_batch.py` 原料池取批生成紧凑视图（剥 HTML/截断超长）供对话内蒸馏；`eval/results/` 入 .gitignore
+
+### 2026-08-29（控制台 Agent 交接信息 + 本地服务持久化）
+- **控制台交接信息**（提交 `e2de21a`，已推送）：密钥卡片新增两块可一键复制的交接文本——「交接给 Agent 的完整信息」（服务地址+密钥+先 GET /skill.md 指引+请求头格式+检索示例，地址取 `window.location.origin`）和「交接给后续 Agent 的邀请信息」（地址+邀请码+带 invite_token 的注册格式）。解决真实痛点：用户只发 af_live_ 密钥给 Agent，Agent 不知道 BASE_URL 去哪请求（TraeWork 实测翻本地记忆+网搜 5 页仍猜不出）。`SecretValue` 组件加 multiline 支持多行交接文本
+- **本地服务持久化**（非 git）：三个计划任务实现登录自启+崩溃自动重启——`AgentFirst-PostgreSQL`（pg_ctl 启动 5433，幂等）、`AgentFirst-API`（后端 exe）、`AgentFirst-Web`（vite dev，node 用 TRAE 自带路径）。全部取消默认 72h 执行时限、防重复启动。非管理员权限可用
+- **PG 路径修正**：实际安装路径 `C:\Users\20401\pgsql17\pgsql\bin\`（bin 在 pgsql 子目录下），此前记忆记录的 `C:\Users\20401\pgsql17\bin\` 不存在
+- 踩坑见下：编译后端前必须先 Stop-ScheduledTask（exe 被任务锁定）
+
 ### 2026-08-29（分层语料方案落地：双进料抓取器 + 同题去重 + STANDARDS 三档分拣）
 
 **战略决策**（用户拍板）：冷启动数据 200 条，双层结构——common 垫底层（高赞/高频迭代实证，免盲测，tags 打 `common` 诚实标注）+ core 核心层（冷门已解决长尾，盲测三档分拣），配比 ≈ 1:1。定位从"只存模型不会的"修正为"带真实出处和条件的实证经验网络，两层结构"；"模型不会 ≠ 有价值"（死技术的坑），金子象限 = 主流高频 × 答案被版本/环境锁定。上线后由真实用户反馈数据自然增长。
@@ -152,6 +179,19 @@
 
 ## 踩坑记录
 
+### 服务用计划任务托管后，cargo build 会报 exe 文件占用
+- **现象**：`AgentFirst-API` 任务在跑时执行 `cargo build`，链接阶段报无法删除/覆盖 `agent-first.exe`
+- **原因**：Windows 下运行中的进程锁定其 exe 文件；计划任务持有的后端进程与手动裸进程行为一致，同样锁文件
+- **解决方案**：编译前 `Stop-ScheduledTask AgentFirst-API`，编完 `Start-ScheduledTask AgentFirst-API` 重新拉起
+- **规避方式**：本地编译循环与常驻任务二选一；改 SKILL.md 后同理（include_str! 编译期嵌入，需 rebuild + 重启任务）
+
+### 工具宿主会话清理会带走裸拉起的后台进程（服务"莫名"挂掉）
+- **现象**：服务之前明明正常，某次会话结束后 PostgreSQL/后端全部失联；8080 端口 LISTEN 但 healthz 超时
+- **原因**：通过会话内 Shell 直接启动的进程挂在工具宿主进程树下，宿主清理时整棵树被带走；后端进程活着但数据库死了，连接池卡在等待上，所有请求超时
+- **排查要点**：先查全部三个端口（5433/8080/5173）而不只查应用端口——数据库死了应用端口照样 LISTEN，极具迷惑性
+- **解决方案**：服务一律改用计划任务托管（登录触发 + 崩溃自动重启），不再用会话内裸拉起
+- **规避方式**：诊断"访问不了"时按 DB → API → Web 顺序逐层查端口
+
 ### SO API tagged 分号 OR 最多 2 个 tag，超过静默返回空（不报错）
 - **现象**：`tagged=a;b;c` 3 个及以上 tag 返回 `{"items": []}`，无 error_message、无 backoff；2 个 tag 正常返回。旧版 7-tag 默认参数现在也全空
 - **排查代价**：烧了 ~10 次配额二分定位（匿名配额仅 300/天/IP，调试前先想清楚测试矩阵）
@@ -205,3 +245,15 @@
 - **原因**：Windows 系统代理开启（127.0.0.1:7897），reqwest 客户端默认读取系统代理设置，请求被代理拦截/篡改，导致返回的数据不对
 - **解决方案**：在 `main.rs` 中创建 reqwest Client 时加 `.no_proxy()` 禁用代理
 - **规避方式**：本地开发时如果开了代理工具，后端外站 API 请求可能异常，注意检查代理状态
+
+### 改了 Rust 默认值后线上不生效——运行中的还是旧二进制
+- **现象**：`gap_min` 阈值已从 0.50 改到 0.65（config.rs 默认值），但线上实测同域相邻查询照样漏出 0.59/0.52/0.50 三条缺口；源码里 filter 逻辑正确
+- **原因**：改动发生时后端进程是早前编译的旧版本在跑，代码默认值只在新编译产物里生效；与 include_str!（SKILL.md）同理但更隐蔽——没有任何编译报错，纯运行时行为差异
+- **排查要点**：改任何「代码默认值」后线上验证不生效，先问二进制是不是旧的（进程启动时间 vs 文件修改时间）
+- **解决方案**：停进程 → cargo build → 重新拉起；`.env` 优先级更高，先确认没有环境变量覆盖（本例 .env 里两行都是注释才走的默认值）
+
+### HTTP 实测缺口检索为空，先查可见性再怀疑阈值
+- **现象**：匿名 curl 检索真命中缺口查询，`related_gaps` 恒为空数组，一度怀疑阈值标定有误
+- **原因**：4 条缺口全是 `developer_shared` 可见性，匿名 ReadPrincipal 只能看 public——空数组是权限过滤的正确行为；标定脚本走 DB 直连绕过了可见性，两边结果对不上
+- **解决方案**：带 `Authorization: Bearer <api_key>` 重测即命中（真命中 0.821 保留）。测试凭证存 `research/_agent_key.json`
+- **连带坑**：后端鉴权头是 `Authorization: Bearer`，不是 `X-Api-Key`——用错 header 会被静默当匿名，不报 401
