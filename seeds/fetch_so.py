@@ -34,6 +34,15 @@ STACK_WHITELIST = {
     "python", "pip",
     "spring-boot", "java",
     "git", "github-actions", "webpack",
+    # 2026-08-29 扩栈新增 9 个
+    "go", "goroutine", "go-modules",
+    "vue.js", "vuejs2", "vuejs3", "vue-component", "vuex", "pinia", "nuxt.js",
+    "mysql", "mariadb",
+    "next.js",
+    "github", "gitlab", "bitbucket", "git-branch", "git-rebase",
+    "linux", "bash", "shell", "ubuntu", "centos", "debian", "systemd",
+    "c#", ".net", ".net-core", "asp.net-core", "asp.net", "entity-framework-core", "linq",
+    "mongodb", "mongoose", "aggregation-framework",
 }
 
 # common 层双路条件（OR 关系，两路抓取后按 question_id 合并去重）
@@ -47,7 +56,8 @@ CORE_FEEDS = [
     {"sort": "votes", "order": "asc", "min": 0, "max": 5, "answers": 1},
 ]
 
-DEFAULT_TAGS = "rust,reactjs,postgresql,spring-boot,docker,node.js,python,typescript,kubernetes"
+DEFAULT_TAGS = ("rust,reactjs,postgresql,spring-boot,docker,node.js,python,typescript,kubernetes,"
+                "go,vue.js,mysql,redis,next.js,git,linux,c#,mongodb")
 # SO API 实测：tagged 分号 OR 最多 2 个 tag，超过静默返回空（2026-08-29 调试结论）
 TAG_GROUP_SIZE = 2
 
@@ -162,6 +172,7 @@ def main() -> None:
                         help="进料层：common=高赞/高频反馈垫底层，core=冷门已解决核心层")
     parser.add_argument("--tags", default=DEFAULT_TAGS, help="标签列表，逗号分隔")
     parser.add_argument("--pages", type=int, default=3, help="每路抓取页数（每页约 20 条）")
+    parser.add_argument("--start-page", type=int, default=1, help="起始页码（跳过已抓过的页）")
     parser.add_argument("--pagesize", type=int, default=20, help="每页条数")
     parser.add_argument("--output", default=None, help="输出文件路径（默认 so_raw_{feed}.json）")
     args = parser.parse_args()
@@ -189,8 +200,8 @@ def main() -> None:
         print(f"\n第 {feed_idx}/{len(feeds)} 路（{feed_desc}）:")
         for group in tag_groups:
             print(f"  标签组 {group}:")
-            for page in range(1, args.pages + 1):
-                print(f"    第 {page}/{args.pages} 页...", end=" ", flush=True)
+            for page in range(args.start_page, args.start_page + args.pages):
+                print(f"    第 {page} 页...", end=" ", flush=True)
                 raw = fetch_questions(group, page, args.pagesize, feed_params)
                 items = extract_items(raw)
                 new_items = [it for it in items if it["question_id"] not in seen_ids]
