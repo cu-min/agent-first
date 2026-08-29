@@ -52,7 +52,9 @@ impl AppConfig {
         };
         let thresholds = SearchThresholds {
             lexical_min: parse_score_env("SEARCH_LEXICAL_MIN_SCORE", 0.10),
-            semantic_min: parse_score_env("SEARCH_SEMANTIC_MIN_SCORE", 0.35),
+            // 实测 0.35 会让抽象无关查询（如"古希腊哲学对现代的影响"）漏出弱相关结果；
+            // 0.50 拦截该泄漏且语料内 Top-1 召回不降（2026-08-29 全查询组实测）。
+            semantic_min: parse_score_env("SEARCH_SEMANTIC_MIN_SCORE", 0.50),
         };
         Ok(Self {
             database_url,

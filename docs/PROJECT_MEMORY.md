@@ -45,6 +45,13 @@
 
 ## 变更记录
 
+### 2026-08-29（语义阈值默认 0.35→0.50 + 踩坑记录补全）
+- **依据（全查询组实测）**：语义 0.50 时中文抽象无关查询（古希腊哲学对现代的影响）从 5 条泄漏归零；语料内 7 组查询（含中英文、含当天新写入亲历记忆）Top-1 召回全部保持。英文无关泄漏（how to train my dog）实测与语义阈值无关——语义 0.6 依旧泄漏，根因在词法路径 token 子串匹配（gap `c3c9d649` 待修）
+- **改动面**：`config.rs` 默认值 + 注明实测依据；`.env.example` / 本地 `.env` 注释同步；`docs/API.md` 默认值描述同步。词法阈值维持 0.10——实测 0.25 无收益（单 token 命中得分 1/n + 0.05 恰好过线拦不住，还会误伤真命中）
+- **生效方式**：代码默认值改动，任何未显式设置环境变量的部署重启即生效；已显式设置 `SEARCH_SEMANTIC_MIN_SCORE` 的环境需手动同步
+- **验证**：cargo test 57 单测 + 8 集成测试通过；重启后复测无关泄漏 4/4 归零、语料内 Top-1 7/7
+- 补录踩坑条目：order_by 虚拟列（此前仅在变更记录提及，未入踩坑记录）
+
 ### 2026-08-29（上线前数据就绪分析：修 2 个 P0 检索/列表 bug + 写入闭环实测）
 
 **P0 bug 修复（提交 `ca74899`，不修则上线即事故）**
@@ -111,6 +118,12 @@
 - **排查要点**：单进程内严格交替 = 连接池轮转 + 单个坏连接；顺序请求难复现（连接复用单一），**并发混合压测两个接口**才稳定复现；抓 stderr 日志（重启时务必用 RedirectStandardError，裸 Start-Process 的 stderr 会丢）
 - **解决方案**：count 查询移除 limit/offset 多余 bind；铁律是同一 SQL 字符串所有调用点 bind 签名一致
 - **规避方式**：写运行时 sqlx 查询时自查"这条 SQL 字符串别处是否也用了"；review 时对 format! 拼出的 SQL 特别警惕
+
+### order_by 排序键引用 JOIN 计算的虚拟列 → 稳定 500
+- **现象**：`GET /v1/public/memories?order_by=reuse`（`feedback`/`evidence` 同）100% 必 500，不带 order_by 或其他参数全部正常；本地无测试覆盖所以上线前才暴露
+- **原因**：排序 SQL 直接引用 `agent_positive_feedback` / `human_positive_feedback` / `evidence_count`，这些**不是 memories 物理列**，而是 `fetch_memory_summaries` 在汇总查询里 LEFT JOIN + COUNT FILTER 算出来的统计值。列表接口的第一阶段 SQL（只取 id 列表）不经过汇总查询，Postgres 报 `column "agent_positive_feedback" does not exist`
+- **解决方案**：排序键改用关联子查询，如 `(SELECT COUNT(*) FROM memory_feedback f WHERE f.memory_id = m.id AND f.source_type = 'agent' AND f.verdict IN (...)) DESC`；三处列表（public、memories 的 agent/developer 两个视角）同改
+- **规避方式**：**汇总接口输出的字段 ≠ 表列**，写 ORDER BY 前确认引用的列在目标表物理存在；给所有 API 文档声明的可选参数补集成测试（本次 `order_by` 就是 API.md 承诺了却从没测过的参数）
 
 ### 改了 SKILL.md 但线上 /skill.md 不更新
 - **现象**：编辑 `docs/SKILL.md` 后请求 `GET /skill.md` 仍返回旧内容
