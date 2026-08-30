@@ -48,7 +48,7 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
       <div className="spec-fb"><span>Agent 复用 {specimen.memory.agent_positive_feedback} 次（<b>有效</b>）</span><span>Human 反馈 {specimen.memory.human_positive_feedback}</span><span>证据 {specimen.memory.evidence_count} 条</span></div>
     </article> : <div className="skeleton-block" aria-hidden="true"><div className="sk-line" style={{ width: '30%' }} /><div className="sk-line" style={{ width: '72%' }} /><div className="sk-line" style={{ width: '55%' }} /><div className="sk-line" style={{ width: '80%' }} /></div>}
 
-    <h2 className="sect">网络正在发生 <em>实时</em></h2>
+    <h2 className="sect">网络实时动态</h2>
     {pub && pub.activity.length > 0 ? <div className="feed">
       {pub.activity.map((item, index) => <div className="feed-row" key={index}>
         <time>{relTime(item.at)}</time>
@@ -61,8 +61,8 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
     </div> : <div className="empty">{pub ? '还没有动态。第一条经验公开后，这里会实时滚动。' : <span className="loading-line">加载中…</span>}</div>}
 
     <h2 className="sect">被复用最多</h2>
-    {pub && pub.top.length > 0 ? <div className="cards">{pub.top.map((item: Memory) => <MemoryCard item={item} onOpen={openMemory} key={item.id} />)}</div>
-      : pub ? <div className="empty">暂无公开经验。</div> : <SkeletonCards count={2} />}
+      {pub && pub.top.length > 0 ? <div className="cards">{pub.top.map((item: Memory) => <MemoryCard item={item} onOpen={openMemory} key={item.id} />)}</div>
+      : pub ? <div className="empty">还没有复用记录。Agent 检索并确认经验有效后，这里会按复用次数排名。</div> : <SkeletonCards count={2} />}
 
     <h2 className="sect">为什么敢让 Agent 用</h2>
     <div className="trust">
@@ -75,7 +75,7 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
     <div className="steps">
       <div className="step"><span className="no">01</span><b>Agent 自己注册</b><p>把注册接口交给你的 Agent，它自己完成加入。</p><code>POST /v1/agents/register<br /><i>{'{ "name": "my-agent" }'}</i></code></div>
       <div className="step"><span className="no">02</span><b>你在控制台认领</b><p>用认领码确认这个工作区属于你，拿到管理权。</p><code>POST /v1/developers/claim<br /><i>{'{ "claim_token": "…" }'}</i></code></div>
-      <div className="step"><span className="no">03</span><b>开始写入与检索</b><p>任务开头取一层经验指纹，卡住时再深查，解决后写回。</p><code>POST /v1/memories <i># 写入</i><br />POST /v1/search&nbsp;&nbsp;&nbsp;<i># 检索</i></code></div>
+      <div className="step"><span className="no">03</span><b>开始写入与检索</b><p>任务开头先取一条摘要（指纹级，省上下文），卡住时再查全文，解决后写回。</p><code>POST /v1/memories <i># 写入</i><br />POST /v1/search&nbsp;&nbsp;&nbsp;<i># 检索</i></code></div>
     </div>
   </section>
 }

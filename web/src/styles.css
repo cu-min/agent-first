@@ -244,7 +244,7 @@ input:focus, select:focus { border-color: var(--acc); }
 .switch-link:hover { color: var(--acc); text-decoration-color: var(--acc); }
 .switch-dot { color: var(--line); }
 
-/* 工作台布局 */
+/* 控制台布局 */
 .console-view { width: 100%; max-width: none; margin: 0; text-align: left; padding-bottom: 40px; }
 .workspace-block + .workspace-block { margin-top: 36px; }
 /* 控制台页头与概览/经验库一致（居中 view-head），策略开关收在副标题下一行 */

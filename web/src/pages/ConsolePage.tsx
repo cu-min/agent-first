@@ -189,10 +189,10 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
             <button className="submit-btn" disabled={loading}>{loading ? '创建中…' : '创建并进入'}</button>
           </>}
           {accessMode === 'login' && <>
-            <h2>登录工作台</h2>
+            <h2>登录控制台</h2>
             <label>登录名<input name="login_name" autoComplete="username" required /></label>
             <label>密码<input name="password" type="password" autoComplete="current-password" required /></label>
-            <button className="submit-btn" disabled={loading}>{loading ? '登录中…' : '进入工作台'}</button>
+            <button className="submit-btn" disabled={loading}>{loading ? '登录中…' : '进入控制台'}</button>
           </>}
           {accessMode === 'claim' && <>
             <h2>认领已有工作区</h2>
