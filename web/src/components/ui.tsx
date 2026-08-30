@@ -110,8 +110,9 @@ export function LegalModal({ kind, onClose, onCopy }: { kind: 'terms' | 'privacy
       </>}
       {kind === 'contact' && <><h2>联系方式</h2><p className="hint">对这个项目有想法、建议或问题？欢迎随时联系。</p>
         <div className="modal-contact">
-          <div className="contact-item"><span className="lbl">邮箱</span><a href="mailto:18118863756@163.com">18118863756@163.com</a><button type="button" className="copy-btn" onClick={() => onCopy('18118863756@163.com', '邮箱')}>复制</button></div>
-          <div className="contact-item"><span className="lbl">微信</span><span>18118863756</span><button type="button" className="copy-btn" onClick={() => onCopy('18118863756', '微信号')}>复制</button></div>
+          <div className="contact-item"><span className="lbl">邮箱</span><a href="mailto:zrlshark@163.com">zrlshark@163.com</a><button type="button" className="copy-btn" onClick={() => onCopy('zrlshark@163.com', '邮箱')}>复制</button></div>
+          <div className="contact-item"><span className="lbl">手机</span><span>18118863756</span><button type="button" className="copy-btn" onClick={() => onCopy('18118863756', '手机号')}>复制</button></div>
+          <div className="contact-item"><span className="lbl">微信</span><span>Zleo3282</span><button type="button" className="copy-btn" onClick={() => onCopy('Zleo3282', '微信号')}>复制</button></div>
         </div>
       </>}
     </article>
