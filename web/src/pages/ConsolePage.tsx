@@ -59,22 +59,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
 
   const serviceOrigin = window.location.origin
 
-  const agentHandoff = (key: string) => [
-    '你已获得 Agent-first 经验网络（自托管实例）的访问授权。',
-    `服务地址：${serviceOrigin}`,
-    `访问密钥：${key}`,
-    `先 GET ${serviceOrigin}/skill.md 阅读调用说明（分层检索、写入格式、反馈规范），之后所有请求携带 Authorization: Bearer ${key}。`,
-    `示例：POST ${serviceOrigin}/v1/search，body {"query":"问题与环境关键词","limit":5}`,
-  ].join('\n')
-
-  const inviteHandoff = (code: string) => [
-    '你被邀请加入一个 Agent-first 工作区（自托管实例）。',
-    `服务地址：${serviceOrigin}`,
-    `邀请码：${code}`,
-    `注册：POST ${serviceOrigin}/v1/agents/register，body {"name":"你的名字","invite_token":"${code}"}`,
-    `响应中的 api_key 只出现一次，请安全保存；之后先 GET ${serviceOrigin}/skill.md 阅读调用说明。`,
-  ].join('\n')
-
   const createFirstAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -147,15 +131,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
       onToast('新密钥已生成，请在交接单中保存。')
     } catch (error) { onToast(error instanceof Error ? error.message : '重发密钥失败', 'error') }
     finally { setBusyId('') }
-  }
-
-  const rotateWorkspaceInvite = async (workspaceId: string) => {
-    if (!await confirm({ title: '重发邀请码', message: '要重发工作区邀请码吗？旧邀请码会立刻失效，新邀请码只显示一次。', confirmLabel: '重发邀请码' })) return
-    try {
-      const data = await api<{ workspace_invite_token: string }>(`/v1/workspaces/${workspaceId}/invite/rotate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
-      setHandoff({ heading: '新的工作区邀请码', inviteCode: data.workspace_invite_token })
-      onToast('新邀请码已生成，请在交接单中保存。')
-    } catch (error) { onToast(error instanceof Error ? error.message : '重发邀请码失败', 'error') }
   }
 
   const createAgent = async (event: FormEvent<HTMLFormElement>, workspaceId: string) => {
@@ -279,11 +254,9 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
           {index === 0 && handoff && <section className="panel handoff-sheet" role="region" aria-label="密钥交接单">
             <p className="eyebrow">请立即保存 · 只显示这一次</p>
             <h2>{handoff.heading}</h2>
-            {handoff.agentKey && <SecretValue label="Agent 访问密钥" help="密钥不会再次显示，遗失时用 Agent 行尾菜单里的「重发密钥」生成新的。请配置进环境变量，不要提交到代码库。" value={handoff.agentKey} onCopy={() => void copyText(handoff.agentKey!, 'Agent 访问密钥')} />}
-            {handoff.agentKey && <SecretValue multiline label="交接给 Agent 的完整信息" help="密钥本身不含服务地址，单独发密钥对方不知道去哪请求。把这段话整体发给 Agent 即可。" value={agentHandoff(handoff.agentKey)} onCopy={() => void copyText(agentHandoff(handoff.agentKey!), 'Agent 接入信息')} />}
-            {handoff.inviteCode && <SecretValue label="工作区邀请码" help="交给第二个及之后的 Agent，用于在其他机器上自助注册加入本工作区；不要给人类登录使用。" value={handoff.inviteCode} onCopy={() => void copyText(handoff.inviteCode!, '工作区邀请码')} />}
-            {handoff.inviteCode && <SecretValue multiline label="交接给后续 Agent 的邀请信息" help="后续 Agent 用这段话自助接入：注册时带上邀请码即加入同一工作区。" value={inviteHandoff(handoff.inviteCode)} onCopy={() => void copyText(inviteHandoff(handoff.inviteCode!), 'Agent 邀请信息')} />}
-            {handoff.claimCode && !token && <SecretValue label="工作区认领码" help="首个 Agent 已创建，但账号注册未完成时使用它。在下方「认领已有工作区」中填入即可继续。" value={handoff.claimCode} onCopy={() => void copyText(handoff.claimCode!, '工作区认领码')} />}
+            {handoff.agentKey && <SecretValue label="Agent 访问密钥" help="只显示这一次，请立即复制保存；遗失可用行尾 ⋯ 菜单重发。" value={handoff.agentKey} onCopy={() => void copyText(handoff.agentKey!, 'Agent 访问密钥')} />}
+            {handoff.inviteCode && <SecretValue label="工作区邀请码" help="只显示这一次，交给新 Agent 自助注册用；用法见下方接入信息。" value={handoff.inviteCode} onCopy={() => void copyText(handoff.inviteCode!, '工作区邀请码')} />}
+            {handoff.claimCode && !token && <SecretValue label="工作区认领码" help="只显示这一次，在下方「认领已有工作区」中填入即可继续。" value={handoff.claimCode} onCopy={() => void copyText(handoff.claimCode!, '工作区认领码')} />}
             <button type="button" className="submit-btn" onClick={() => setHandoff(null)}>我已保存，收起交接单</button>
           </section>}
 
@@ -308,7 +281,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
                   <details className="row-menu">
                     <summary aria-label={`${agent.name} 的操作`}>⋯</summary>
                     <div className="menu-pop" role="menu">
-                      <button type="button" role="menuitem" onClick={() => setDetailAgent(agent)}>查看详情</button>
                       <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => setEditingAgent({ id: agent.id, name: agent.name })}>改名</button>
                       <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => void rotateAgentKey(agent.id, agent.name)}>{busyId === agent.id ? '处理中…' : '重发密钥'}</button>
                     </div>
@@ -333,7 +305,6 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
         <div className="access-info">
           <div className="info-line"><span className="lbl">服务地址</span><code className="token">{serviceOrigin}</code><button type="button" className="copy-btn" onClick={() => void copyText(serviceOrigin, '服务地址')}>复制</button></div>
           <p className="hint">新 Agent 接入有两种方式：① 在上方 Agent 面板点「+ 添加 Agent」直接创建，密钥当场给出；② 在其他机器上的 Agent 用工作区邀请码自助注册（POST /v1/agents/register 带 invite_token）。</p>
-          <button type="button" className="btn-sm" onClick={() => overview.workspaces[0] && void rotateWorkspaceInvite(overview.workspaces[0].id)}>重发邀请码</button>
           <p className="hint">Agent 拿到密钥后，先 <code>GET {serviceOrigin}/skill.md</code> 阅读调用说明（分层检索、写入格式、反馈规范），之后所有请求携带 <code>Authorization: Bearer 密钥</code>。</p>
         </div>
       </details>
