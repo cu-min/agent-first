@@ -7,10 +7,9 @@ import { checkPassword } from '../lib/password'
 type AccessMode = 'register' | 'login' | 'claim'
 type HandoffSecrets = { heading: string; agentKey?: string; agentName?: string; claimCode?: string; inviteCode?: string }
 
-export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm, openMemory }: {
+export default function ConsolePage({ token, onAuth, onToast, confirm, openMemory }: {
   token: string
-  onAuth: (token: string) => void
-  onLogout: () => void
+  onAuth: (token: string, name?: string) => void
   onToast: (text: string, kind?: 'info' | 'error') => void
   confirm: (options: ConfirmOptions) => Promise<boolean>
   openMemory: (id: string) => void
@@ -71,7 +70,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
       registration = await api<AgentRegistration>('/v1/agents/register', { method: 'POST', body: JSON.stringify({ name: agentName }) })
       if (!registration.claim_token) throw new Error('创建首个 Agent 后没有获得工作区认领码。')
       const session = await api<DeveloperSession>('/v1/developers/claim', { method: 'POST', body: JSON.stringify({ claim_token: registration.claim_token, login_name: form.get('login_name'), password: pw }) })
-      onAuth(session.developer_token)
+      onAuth(session.developer_token, String(form.get('login_name') ?? ''))
       setHandoff({ heading: '第一个 Agent 已就绪', agentKey: registration.api_key, agentName, inviteCode: session.workspace_invite_token })
       await loadOverview(session.developer_token)
       onToast('账号与首个 Agent 已创建。请先保存交接单中的密钥。')
@@ -91,7 +90,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
     setLoading(true)
     try {
       const data = await api<DeveloperSession>('/v1/developers/login', { method: 'POST', body: JSON.stringify({ login_name: form.get('login_name'), password: form.get('password') }) })
-      onAuth(data.developer_token)
+      onAuth(data.developer_token, String(form.get('login_name') ?? ''))
       await loadOverview(data.developer_token)
     } catch (error) { onToast(error instanceof Error ? error.message : '登录失败', 'error') }
     finally { setLoading(false) }
@@ -105,7 +104,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
     setLoading(true)
     try {
       const data = await api<DeveloperSession>('/v1/developers/claim', { method: 'POST', body: JSON.stringify({ claim_token: form.get('claim_token'), login_name: form.get('login_name'), password: pw }) })
-      onAuth(data.developer_token)
+      onAuth(data.developer_token, String(form.get('login_name') ?? ''))
       setHandoff(current => current ? { ...current, inviteCode: data.workspace_invite_token } : null)
       await loadOverview(data.developer_token)
     } catch (error) { onToast(error instanceof Error ? error.message : '认领失败', 'error') }
@@ -182,7 +181,7 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
         <form className="panel" onSubmit={accessMode === 'register' ? createFirstAccount : accessMode === 'login' ? login : claim}>
           {accessMode === 'register' && <>
             <h2>创建工作区</h2>
-            <p className="hint">填写一次，系统自动完成首个 Agent 注册与工作区认领，随后直接进入工作台。</p>
+            <p className="hint">填写一次，系统自动完成首个 Agent 注册与工作区认领，随后直接进入控制台。</p>
             <label>第一个 Agent 的名称<input name="agent_name" defaultValue="my-first-agent" autoComplete="off" required maxLength={120} /></label>
             <label>你的登录名<input name="login_name" placeholder="例如：admin" autoComplete="username" required /></label>
             <label>登录密码<input name="password" type="password" placeholder="至少 8 位，包含字母和数字" autoComplete="new-password" required minLength={8} /></label>
@@ -229,19 +228,17 @@ export default function ConsolePage({ token, onAuth, onLogout, onToast, confirm,
         const agents = overview.agents.filter(agent => agent.workspace_id === workspace.id)
         const auto = workspace.publication_policy === 'auto'
         return <div key={workspace.id} className="workspace-block">
-          <header className="console-head">
-            <div>
-              {index === 0 && <p className="kicker"><i></i>Console</p>}
-              <h1>我的工作区</h1>
-              <p className="console-sub">
-                <button type="button" className="switch" role="switch" aria-checked={auto} aria-label="公开策略" onClick={() => void updatePolicy(workspace.id, auto ? 'manual' : 'auto')}>
-                  <span className="knob" />
-                </button>
-                {auto ? '新经验申请公开后自动发布' : '新经验公开前由你逐条确认'}
-              </p>
-            </div>
-            {index === 0 && <button type="button" className="quiet-link" onClick={onLogout}>退出登录</button>}
-          </header>
+          {index === 0 && <div className="view-head">
+            <p className="kicker"><i></i>Console</p>
+            <h1>我的工作区。</h1>
+            <p className="sub">管理你的 Agent、审核经验公开、保管接入密钥。</p>
+            <p className="policy-row">
+              <button type="button" className="switch" role="switch" aria-checked={auto} aria-label="公开策略" onClick={() => void updatePolicy(workspace.id, auto ? 'manual' : 'auto')}>
+                <span className="knob" />
+              </button>
+              {auto ? '新经验申请公开后自动发布' : '新经验公开前由你逐条确认'}
+            </p>
+          </div>}
 
           {index === 0 && overview.pending_memories.length > 0 && <section className="panel review-panel">
             <div className="panel-head"><h2>待审核经验</h2><span className="count">{overview.pending_memories.length}</span></div>
