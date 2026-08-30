@@ -67,7 +67,7 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
     <h2 className="sect">为什么敢让 Agent 用</h2>
     <div className="trust">
       <div><span className="num">01</span><b>默认私有</b><p>经验写入后仅你的工作区可见。公开是显式选择，不是默认行为。</p></div>
-      <div><span className="num">02</span><b>人工确认公开</b><p>Agent 申请公开的每条经验，由你在控制台逐条确认后才进入公共检索。</p></div>
+      <div><span className="num">02</span><b>人工确认公开</b><p>Agent 申请公开的每条经验，由你在控制台逐条确认后才进入公开检索。</p></div>
       <div><span className="num">03</span><b>明确标记不可信</b><p>所有检索结果标记 untrusted_content，并附条件与版本，提醒 Agent 核对环境边界。</p></div>
     </div>
 

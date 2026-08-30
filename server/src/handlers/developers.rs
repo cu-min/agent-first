@@ -51,7 +51,7 @@ pub(crate) async fn claim_workspace(
     .fetch_optional(&mut *transaction)
     .await?;
     let Some(workspace) = workspace else {
-        return Err(ApiError::forbidden("认领令牌无效或工作区已经被认领"));
+        return Err(ApiError::forbidden("认领码无效或工作区已经被认领"));
     };
     let developer_id = Uuid::new_v4();
     let password_hash = security::hash_password(&input.password).map_err(ApiError::internal)?;
@@ -102,13 +102,13 @@ pub(crate) async fn login(
         .fetch_optional(&state.pool)
         .await?;
     let Some(row) = row else {
-        return Err(ApiError::unauthorized());
+        return Err(ApiError::unauthorized_msg("登录名或密码不正确"));
     };
     if !security::verify_password(
         &input.password,
         row.get::<String, _>("password_hash").as_str(),
     ) {
-        return Err(ApiError::unauthorized());
+        return Err(ApiError::unauthorized_msg("登录名或密码不正确"));
     }
     let mut transaction = state.pool.begin().await?;
     let session = create_developer_session(&mut transaction, row.get("id"), None).await?;

@@ -1,5 +1,5 @@
 <div align="center">
-  <h1 align="center">Agent-first</h1>
+  <h1 align="center">ExperienceNet</h1>
   <strong>让你的 AI Agent 记住真正解决过的问题。</strong>
   <br />
   执行前取一层经验摘要，卡住时按需深查；复用后写回反馈，下一次不必再从零开始。
@@ -18,7 +18,7 @@
 
 它修过一次连接池超时、踩过一次依赖冲突、找到过一次正确的部署参数。换一个任务、开一个新会话，这些经验通常就消失了。
 
-Agent-first 把每次真实尝试沉淀为可检索的记忆：**什么环境、做了什么、结果如何、后来是否复用成功**。下次遇到类似问题，Agent 先在任务开头拿到一层经验摘要（问题 + 条件 + 结果），执行中卡住时再深查完整做法。
+ExperienceNet 把每次真实尝试沉淀为可检索的经验：**什么环境、做了什么、结果如何、后来是否复用成功**。下次遇到类似问题，Agent 先在任务开头拿到一层经验摘要（问题 + 条件 + 结果），执行中卡住时再深查完整做法。
 
 ```
 新任务 → 取经验摘要 → 执行，卡住时深查 → 写回结果 → 下个 Agent 直接受益
@@ -37,7 +37,7 @@ Agent-first 把每次真实尝试沉淀为可检索的记忆：**什么环境、
 
 | | |
 |---|---|
-| **记忆** | 一次真实尝试的四元组：问题 / 条件 / 做法 / 结果，标注成功、部分成功或失败 |
+| **经验** | 一次真实尝试的四元组：问题 / 条件 / 做法 / 结果，标注成功、部分成功或失败 |
 | **经验缺口** | 搜不到就是需求信号：Agent 留下缺口，经验补上后自动闭环 |
 | **反馈** | 复用过的 Agent 报告“照做有效 / 无效”，后来的 Agent 据此判断 |
 | **检索** | 词法 + 语义双路混合（RRF 融合），相关度阈值过滤，宁可返回空也不硬凑 |
@@ -52,8 +52,8 @@ Agent-first 把每次真实尝试沉淀为可检索的记忆：**什么环境、
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/cu-min/agent-first.git
-cd agent-first
+git clone https://github.com/cu-min/experiencenet.git
+cd experiencenet
 cp .env.example .env
 docker compose up -d db
 cd web
@@ -66,8 +66,8 @@ cargo run
 ### Windows PowerShell
 
 ```powershell
-git clone https://github.com/cu-min/agent-first.git
-Set-Location agent-first
+git clone https://github.com/cu-min/experiencenet.git
+Set-Location experiencenet
 Copy-Item .env.example .env
 docker compose up -d db
 Set-Location web
@@ -95,7 +95,7 @@ cargo run
 3. 没有可用经验：`POST /v1/gaps`，留下待解决的经验缺口。
 4. 完成真实尝试后：`POST /v1/memories` 写回；复用过经验后 `POST /v1/memories/{id}/feedback` 告诉后来者它是否真的有效。
 
-搜索可以匿名使用；Agent Key 会额外解锁自己的私有记忆和工作区共享记忆。完整字段见 [API 文档](docs/API.md)。
+搜索可以匿名使用；Agent Key 会额外解锁自己的私有经验和工作区共享经验。完整字段见 [API 文档](docs/API.md)。
 
 ## 为真实协作准备
 

@@ -1,4 +1,4 @@
-# Agent-first 腾讯云部署完整指南
+# ExperienceNet 腾讯云部署完整指南
 
 > 项目技术栈：Rust (Axum) + React (Vite) + PostgreSQL 17 (pgvector) + Caddy (自动 HTTPS)
 > 部署方式：Docker Compose 一键编排
@@ -74,21 +74,21 @@ docker compose version
 
 ```bash
 cd /opt
-git clone <你的仓库地址> agent-first
-cd agent-first
+git clone <你的仓库地址> experiencenet
+cd experiencenet
 ```
 
 **方式二：SCP 上传**
 
 ```bash
 # 在本地电脑执行
-scp -r ./agent-first root@服务器IP:/opt/
+scp -r ./experiencenet root@服务器IP:/opt/
 ```
 
 ### 3.2 配置环境变量
 
 ```bash
-cd /opt/agent-first/deploy
+cd /opt/experiencenet/deploy
 
 # 复制环境变量模板
 cp .env.example .env
@@ -131,7 +131,7 @@ EMBEDDING_MODEL=embedding-3
 ### 3.3 启动服务
 
 ```bash
-cd /opt/agent-first/deploy
+cd /opt/experiencenet/deploy
 
 # 构建并启动所有服务（首次构建需要 5-10 分钟，因为要编译 Rust）
 docker compose -f compose.prod.yaml up -d --build
@@ -206,7 +206,7 @@ docker compose -f compose.prod.yaml logs caddy
 ### 6.1 查看服务状态
 
 ```bash
-cd /opt/agent-first/deploy
+cd /opt/experiencenet/deploy
 
 # 查看所有容器状态
 docker compose -f compose.prod.yaml ps
@@ -223,7 +223,7 @@ docker compose -f compose.prod.yaml logs -f server
 ### 6.2 停止/启动服务
 
 ```bash
-cd /opt/agent-first/deploy
+cd /opt/experiencenet/deploy
 
 # 停止所有服务
 docker compose -f compose.prod.yaml down
@@ -238,7 +238,7 @@ docker compose -f compose.prod.yaml restart server
 ### 6.3 更新代码
 
 ```bash
-cd /opt/agent-first
+cd /opt/experiencenet
 
 # 拉取最新代码
 git pull
@@ -250,12 +250,12 @@ docker compose -f compose.prod.yaml up -d --build server
 
 ### 6.4 数据库备份
 
-备份文件会自动保存在 `/opt/agent-first/deploy/backups/` 目录下，每天一份，保留 14 天。
+备份文件会自动保存在 `/opt/experiencenet/deploy/backups/` 目录下，每天一份，保留 14 天。
 
 **手动备份：**
 ```bash
-cd /opt/agent-first/deploy
-docker compose -f compose.prod.yaml exec db pg_dump -U agentfirst -d agentfirst -Fc -f /backups/manual-$(date +%Y%m%d-%H%M).dump
+cd /opt/experiencenet/deploy
+docker compose -f compose.prod.yaml exec db pg_dump -U experiencenet -d experiencenet -Fc -f /backups/manual-$(date +%Y%m%d-%H%M).dump
 ```
 
 **恢复备份：**
@@ -264,7 +264,7 @@ docker compose -f compose.prod.yaml exec db pg_dump -U agentfirst -d agentfirst 
 docker compose -f compose.prod.yaml stop server
 
 # 恢复（替换为你的备份文件名）
-docker compose -f compose.prod.yaml exec db pg_restore -U agentfirst -d agentfirst -c /backups/agentfirst-20260828-1200.dump
+docker compose -f compose.prod.yaml exec db pg_restore -U experiencenet -d experiencenet -c /backups/experiencenet-20260828-1200.dump
 
 # 重启服务
 docker compose -f compose.prod.yaml start server
@@ -274,7 +274,7 @@ docker compose -f compose.prod.yaml start server
 
 ```bash
 # 进入数据库
-docker compose -f compose.prod.yaml exec db psql -U agentfirst -d agentfirst
+docker compose -f compose.prod.yaml exec db psql -U experiencenet -d experiencenet
 
 # 查看表
 \dt
@@ -397,7 +397,7 @@ cat > /opt/check_health.sh << 'EOF'
 #!/bin/bash
 if ! curl -sf https://yourdomain.com/ > /dev/null; then
     echo "网站宕机了，正在重启..."
-    cd /opt/agent-first/deploy
+    cd /opt/experiencenet/deploy
     docker compose -f compose.prod.yaml restart server
 fi
 EOF
@@ -419,7 +419,7 @@ chmod +x /opt/check_health.sh
 - [ ] 能正常注册/登录
 - [ ] 能创建 Agent 并获取 Key
 - [ ] 搜索功能正常（无 embedding 也能用词法搜索）
-- [ ] 写记忆功能正常
+- [ ] 写经验功能正常
 - [ ] 数据库备份目录有文件生成
 - [ ] 服务器安全组只开放必要端口
 - [ ] 数据库密码是强密码

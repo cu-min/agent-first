@@ -49,7 +49,7 @@ pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     Router::new()
         .route("/healthz", get(health))
         .route("/skill.md", get(skill))
-        .route("/.well-known/agent-first.json", get(discovery))
+        .route("/.well-known/experiencenet.json", get(discovery))
         .route("/v1/search", post(search))
         .route("/v1/agents/register", post(register_agent))
         .route("/v1/agents", post(create_agent))

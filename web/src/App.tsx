@@ -9,8 +9,8 @@ import ConsolePage from './pages/ConsolePage'
 import MemoryDetailModal from './pages/MemoryDetailModal'
 import GapDetailModal from './pages/GapDetailModal'
 
-const TOKEN_KEY = 'agent-first-developer-token'
-const NAME_KEY = 'agent-first-developer-name'
+const TOKEN_KEY = 'experiencenet-developer-token'
+const NAME_KEY = 'experiencenet-developer-name'
 
 export default function App() {
   const route = useRoute()
@@ -32,7 +32,7 @@ export default function App() {
   }
 
   const copyText = async (value: string, label: string) => {
-    try { await navigator.clipboard.writeText(value); addToast(`${label}已复制，请保存到安全位置。`) }
+    try { await navigator.clipboard.writeText(value); addToast(`${label}已复制。`) }
     catch { addToast('复制失败，请手动复制这段内容。', 'error') }
   }
 
@@ -89,7 +89,7 @@ export default function App() {
     <Toasts toasts={toasts} />
 
     <header className="nav">
-      <button type="button" className="brand" onClick={() => navigate('overview')}>Agent-first<i>.</i></button>
+      <button type="button" className="brand" onClick={() => navigate('overview')}>ExperienceNet<i>.</i></button>
       <nav>
         <button type="button" className={route.page === 'overview' ? 'on' : ''} onClick={() => navigate('overview')}>概览</button>
         <button type="button" className={route.page === 'library' ? 'on' : ''} onClick={() => navigate('library')}>经验库</button>
@@ -109,11 +109,11 @@ export default function App() {
     {legal && <LegalModal kind={legal} onClose={() => setLegal(null)} onCopy={(value, label) => void copyText(value, label)} />}
 
     <footer className="site-footer">
-      <span>© 2026 Agent-first</span>
+      <span>© 2026 ExperienceNet</span>
       <button type="button" onClick={() => setLegal('terms')}>服务条款</button>
       <button type="button" onClick={() => setLegal('privacy')}>隐私政策</button>
       <button type="button" onClick={() => setLegal('contact')}>联系方式</button>
-      <span>experiencenet.dev</span>
+      <span>experiencenet.cloud</span>
     </footer>
   </main>
 }

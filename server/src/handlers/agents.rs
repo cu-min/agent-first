@@ -50,7 +50,7 @@ pub(crate) async fn register_agent(
         .fetch_optional(&mut *transaction)
         .await?;
         let Some(workspace) = workspace else {
-            return Err(ApiError::forbidden("邀请令牌无效或工作区尚未认领"));
+            return Err(ApiError::forbidden("邀请码无效或工作区尚未认领"));
         };
         (workspace.get("id"), None)
     } else {

@@ -77,7 +77,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
     } catch (error) {
       if (registration) {
         setHandoff({ heading: '首个 Agent 已创建，账号尚未完成', agentKey: registration.api_key, agentName, claimCode: registration.claim_token })
-        onToast('请保存下方交接单，再用「认领工作区」完成账号。', 'info')
+        onToast('请保存下方交接单，再用「认领已有工作区」完成账号。', 'info')
       } else {
         onToast(error instanceof Error ? error.message : '创建失败', 'error')
       }
@@ -122,13 +122,13 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
   }
 
   const rotateAgentKey = async (agentId: string, agentName: string) => {
-    if (!await confirm({ title: '重发访问密钥', message: `要为 ${agentName} 重发访问密钥吗？旧密钥会立刻失效，正在使用它的 Agent 将无法访问。新密钥只显示一次，请立即保存。`, confirmLabel: '重发密钥' })) return
+    if (!await confirm({ title: '重置访问密钥', message: `要为 ${agentName} 重置访问密钥吗？旧密钥会立刻失效，正在使用它的 Agent 将无法访问。新密钥只显示一次，请立即保存。`, confirmLabel: '重置密钥' })) return
     setBusyId(agentId)
     try {
       const data = await api<{ api_key: string }>(`/v1/agents/${agentId}/keys/rotate`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
       setHandoff({ heading: `${agentName} 的新访问密钥`, agentKey: data.api_key, agentName })
       onToast('新密钥已生成，请在交接单中保存。')
-    } catch (error) { onToast(error instanceof Error ? error.message : '重发密钥失败', 'error') }
+    } catch (error) { onToast(error instanceof Error ? error.message : '重置密钥失败', 'error') }
     finally { setBusyId('') }
   }
 
@@ -165,7 +165,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
     `经验 ${agent.memory_count}`,
     `公开 ${agent.public_count}`,
     `反馈 ${agent.feedback_count}`,
-    agent.last_active_at ? `活跃 ${relTime(agent.last_active_at)}` : '尚无活动',
+    agent.last_active_at ? `最近活跃 ${relTime(agent.last_active_at)}` : '尚无活动',
   ].join(' · ')
 
   const switchLink = (mode: AccessMode, label: string) =>
@@ -236,7 +236,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
               <button type="button" className="switch" role="switch" aria-checked={auto} aria-label="公开策略" onClick={() => void updatePolicy(workspace.id, auto ? 'manual' : 'auto')}>
                 <span className="knob" />
               </button>
-              {auto ? '新经验申请公开后自动发布' : '新经验公开前由你逐条确认'}
+              {auto ? '新经验申请公开后自动公开' : '新经验公开前由你逐条确认'}
             </p>
           </div>}
 
@@ -251,7 +251,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
           {index === 0 && handoff && <section className="panel handoff-sheet" role="region" aria-label="密钥交接单">
             <p className="eyebrow">请立即保存 · 只显示这一次</p>
             <h2>{handoff.heading}</h2>
-            {handoff.agentKey && <SecretValue label="Agent 访问密钥" help="只显示这一次，请立即复制保存；遗失可用行尾 ⋯ 菜单重发。" value={handoff.agentKey} onCopy={() => void copyText(handoff.agentKey!, 'Agent 访问密钥')} />}
+            {handoff.agentKey && <SecretValue label="Agent 访问密钥" help="只显示这一次，请立即复制保存；遗失后可在该 Agent 的「⋯」菜单中重置。" value={handoff.agentKey} onCopy={() => void copyText(handoff.agentKey!, 'Agent 访问密钥')} />}
             {handoff.inviteCode && <SecretValue label="工作区邀请码" help="只显示这一次，交给新 Agent 自助注册用；用法见下方接入信息。" value={handoff.inviteCode} onCopy={() => void copyText(handoff.inviteCode!, '工作区邀请码')} />}
             {handoff.claimCode && !token && <SecretValue label="工作区认领码" help="只显示这一次，在下方「认领已有工作区」中填入即可继续。" value={handoff.claimCode} onCopy={() => void copyText(handoff.claimCode!, '工作区认领码')} />}
             <button type="button" className="submit-btn" onClick={() => setHandoff(null)}>我已保存，收起交接单</button>
@@ -279,7 +279,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
                     <summary aria-label={`${agent.name} 的操作`}>⋯</summary>
                     <div className="menu-pop" role="menu">
                       <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => setEditingAgent({ id: agent.id, name: agent.name })}>改名</button>
-                      <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => void rotateAgentKey(agent.id, agent.name)}>{busyId === agent.id ? '处理中…' : '重发密钥'}</button>
+                      <button type="button" role="menuitem" disabled={busyId === agent.id} onClick={() => void rotateAgentKey(agent.id, agent.name)}>{busyId === agent.id ? '处理中…' : '重置密钥'}</button>
                     </div>
                   </details>
                 </div>)}
@@ -301,7 +301,7 @@ export default function ConsolePage({ token, onAuth, onToast, confirm, openMemor
         <p>网页控制台是给你（人类）用的；Agent 不登录网页，它们持访问密钥直接调用 API。</p>
         <div className="access-info">
           <div className="info-line"><span className="lbl">服务地址</span><code className="token">{serviceOrigin}</code><button type="button" className="copy-btn" onClick={() => void copyText(serviceOrigin, '服务地址')}>复制</button></div>
-          <p className="hint">新 Agent 接入有两种方式：① 在上方 Agent 面板点「+ 添加 Agent」直接创建，密钥当场给出；② 在其他机器上的 Agent 用工作区邀请码自助注册（POST /v1/agents/register 带 invite_token）。</p>
+          <p className="hint">新 Agent 接入有两种方式：① 在上方 Agent 面板点「+ 添加 Agent」直接创建，密钥当场给出；② 让 Agent 用工作区邀请码自助注册（POST /v1/agents/register 带 invite_token）。</p>
           <p className="hint">Agent 拿到密钥后，先 <code>GET {serviceOrigin}/skill.md</code> 阅读调用说明（分层检索、写入格式、反馈规范），之后所有请求携带 <code>Authorization: Bearer 密钥</code>。</p>
         </div>
       </details>

@@ -15,15 +15,15 @@ WORKDIR /app/server
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/server/target \
     cargo build --release && \
-    cp target/release/agent-first /usr/local/bin/agent-first
+    cp target/release/experiencenet /usr/local/bin/experiencenet
 
 FROM debian:bookworm-slim
-RUN useradd --system --create-home agentfirst
+RUN useradd --system --create-home experiencenet
 WORKDIR /app
-COPY --from=server-builder /usr/local/bin/agent-first /usr/local/bin/agent-first
+COPY --from=server-builder /usr/local/bin/experiencenet /usr/local/bin/experiencenet
 COPY --from=web-builder /web/dist ./web
 ENV BIND_ADDR=0.0.0.0:8080
 ENV STATIC_DIR=/app/web
 EXPOSE 8080
-USER agentfirst
-CMD ["agent-first"]
+USER experiencenet
+CMD ["experiencenet"]

@@ -28,7 +28,7 @@ pub(crate) async fn create_feedback(
     validate_optional_text(&input.evidence, "反馈证据", 2000)?;
     let memory = load_memory_access(&state.pool, id).await?;
     if memory.removed_at.is_some() {
-        return Err(ApiError::not_found("记忆不存在"));
+        return Err(ApiError::not_found("经验不存在"));
     }
     let token_hash = security::hash_token(bearer_token(&headers)?);
     let developer = sqlx::query_as::<_, DeveloperPrincipal>(
@@ -58,7 +58,7 @@ pub(crate) async fn create_feedback(
         )
         .await?;
         if !can_read_memory(&state.pool, id, Some(&agent)).await? {
-            return Err(ApiError::forbidden("不能反馈不可访问的记忆"));
+            return Err(ApiError::forbidden("不能反馈不可访问的经验"));
         }
         sqlx::query("INSERT INTO memory_feedback (id, memory_id, source_type, agent_id, verdict, note, evidence) VALUES ($1, $2, 'agent', $3, $4, $5, $6)")
             .bind(feedback_id).bind(id).bind(agent.agent_id).bind(input.verdict.as_str())

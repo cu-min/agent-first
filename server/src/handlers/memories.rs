@@ -76,7 +76,7 @@ pub(crate) async fn import_memories(
     }
     if input.memories.len() > IMPORT_BATCH_MAXIMUM {
         return Err(ApiError::bad_request(format!(
-            "单次最多导入 {IMPORT_BATCH_MAXIMUM} 条记忆"
+            "单次最多导入 {IMPORT_BATCH_MAXIMUM} 条经验"
         )));
     }
     for item in &input.memories {
@@ -290,13 +290,13 @@ pub(crate) async fn get_memory(
 ) -> ApiResult<Json<MemoryDetail>> {
     let principal = crate::auth::resolve_read_principal(&state, &headers).await?;
     if !can_read_memory_principal(&state.pool, id, &principal).await? {
-        return Err(ApiError::not_found("记忆不存在或不可访问"));
+        return Err(ApiError::not_found("经验不存在或不可访问"));
     }
     let memory = fetch_memory_summaries(&state.pool, &[id])
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| ApiError::not_found("记忆不存在"))?;
+        .ok_or_else(|| ApiError::not_found("经验不存在"))?;
     let evidence = sqlx::query_as::<_, EvidenceRecord>(
         "SELECT id, kind, label, value, created_at FROM memory_evidence WHERE memory_id = $1 ORDER BY created_at ASC",
     ).bind(id).fetch_all(&state.pool).await?;
@@ -336,7 +336,7 @@ pub(crate) async fn list_memory_feedback(
     let memory = load_memory_access(&state.pool, id).await?;
     let principal = crate::auth::resolve_read_principal(&state, &headers).await?;
     if !can_read_row_principal(&memory, &principal) {
-        return Err(ApiError::not_found("记忆不存在或不可访问"));
+        return Err(ApiError::not_found("经验不存在或不可访问"));
     }
     let rows = sqlx::query_as::<_, FeedbackRecord>(
         "SELECT source_type, verdict, note, evidence, created_at FROM memory_feedback WHERE memory_id = $1 ORDER BY created_at DESC LIMIT 100",
@@ -356,7 +356,7 @@ pub(crate) async fn publish_memory(
     let memory = load_memory_access(&state.pool, id).await?;
     ensure_workspace_owner(&state.pool, memory.workspace_id, developer.developer_id).await?;
     if memory.removed_at.is_some() {
-        return Err(ApiError::bad_request("已移除的记忆不能公开"));
+        return Err(ApiError::bad_request("已移除的经验不能公开"));
     }
     sqlx::query("UPDATE memories SET visibility = 'public', published_at = now(), publication_requested_at = NULL WHERE id = $1")
         .bind(id).execute(&state.pool).await?;

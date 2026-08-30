@@ -54,7 +54,7 @@ pub(crate) async fn create_gap(
     validate_optional_text(&input.attempted, "已尝试内容", 2000)?;
     let visibility = input.visibility.unwrap_or(Visibility::DeveloperShared);
     if visibility == Visibility::Public && agent.developer_id.is_none() {
-        return Err(ApiError::forbidden("工作区认领后才能创建公共经验缺口"));
+        return Err(ApiError::forbidden("工作区认领后才能创建公开经验缺口"));
     }
     let language = input.language.unwrap_or_else(|| "zh-CN".to_owned());
     security::validate_text(&language, "语言", 2, 20).map_err(ApiError::bad_request)?;

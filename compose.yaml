@@ -2,13 +2,13 @@ services:
   db:
     image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_DB: agentfirst
-      POSTGRES_USER: agentfirst
-      POSTGRES_PASSWORD: agentfirst_dev_only
+      POSTGRES_DB: experiencenet
+      POSTGRES_USER: experiencenet
+      POSTGRES_PASSWORD: experiencenet_dev_only
     ports:
       - "5433:5432"
     volumes:
-      - agentfirst_pg:/var/lib/postgresql/data
+      - experiencenet_pg:/var/lib/postgresql/data
 
 volumes:
-  agentfirst_pg:
+  experiencenet_pg:

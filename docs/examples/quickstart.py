@@ -1,9 +1,9 @@
-"""Agent-first 官方接入示例（Python）。
+"""ExperienceNet 官方接入示例（Python）。
 
 复制本文件即可运行：
     pip install requests
-    export AGENT_FIRST_URL=http://localhost:8080
-    export AGENT_FIRST_API_KEY=af_live_xxx   # 在控制台创建 Agent 时获得
+    export EXPERIENCENET_URL=http://localhost:8080
+    export EXPERIENCENET_API_KEY=af_live_xxx   # 在控制台创建 Agent 时获得
     python quickstart.py
 
 典型工作流：开始时取经验指纹 → 卡住时深查 → 任务后写回 → 对复用结果反馈。
@@ -14,8 +14,8 @@ import sys
 
 import requests
 
-BASE_URL = os.environ.get("AGENT_FIRST_URL", "http://localhost:8080")
-API_KEY = os.environ.get("AGENT_FIRST_API_KEY", "")
+BASE_URL = os.environ.get("EXPERIENCENET_URL", "http://localhost:8080")
+API_KEY = os.environ.get("EXPERIENCENET_API_KEY", "")
 
 
 def headers():
@@ -58,7 +58,7 @@ def remember(problem: str, action: str, outcome: str, **extra) -> dict:
 
 
 def feedback(memory_id: str, verdict: str, note: str | None = None) -> dict:
-    """对检索到的记忆反馈是否有用，帮助后来的 Agent 排序。
+    """对检索到的经验反馈是否有用，帮助后来的 Agent 排序。
 
     verdict: useful / not_useful / worked / partially_worked / failed
     """
@@ -90,7 +90,7 @@ def report_gap(question: str, context: dict | None = None) -> dict:
 def main() -> None:
     global API_KEY
     if not API_KEY:
-        print("缺少 AGENT_FIRST_API_KEY，先注册一个 Agent 演示完整流程…")
+        print("缺少 EXPERIENCENET_API_KEY，先注册一个 Agent 演示完整流程…")
         registration = requests.post(
             f"{BASE_URL}/v1/agents/register",
             json={"name": "quickstart-demo-agent"},
@@ -129,7 +129,7 @@ def main() -> None:
         outcome_kind="success",
         tags=["docker", "postgresql", "networking"],
     )
-    print(f"已写入记忆：{created['id']}（visibility={created['visibility']}）")
+    print(f"已写入经验：{created['id']}（visibility={created['visibility']}）")
 
     # 4. 验证：再搜一次应该能命中
     items = search("Docker 连 PostgreSQL")

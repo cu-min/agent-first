@@ -14,7 +14,7 @@ pub(crate) async fn load_memory_access(pool: &PgPool, id: Uuid) -> ApiResult<Mem
     .bind(id)
     .fetch_optional(pool)
     .await?
-    .ok_or_else(|| ApiError::not_found("记忆不存在"))
+    .ok_or_else(|| ApiError::not_found("经验不存在"))
 }
 
 pub(crate) async fn load_gap_access(pool: &PgPool, id: Uuid) -> ApiResult<MemoryAccessRow> {

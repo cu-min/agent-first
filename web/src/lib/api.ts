@@ -22,13 +22,13 @@ export type Toast = { id: number; text: string; kind: 'info' | 'error' }
 export const api = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
   let response: Response
   try { response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } }) }
-  catch { throw new Error('无法连接到服务。请确认服务已启动。') }
+  catch { throw new Error('网络连接失败，请检查网络后重试。') }
   const raw = await response.text()
   let data: { error?: { message?: string } } | null = null
   if (raw) {
-    try { data = JSON.parse(raw) } catch { throw new Error(response.status >= 500 ? '服务尚未就绪。请先启动服务端，再试一次。' : '服务返回格式不正确，请稍后重试。') }
+    try { data = JSON.parse(raw) } catch { throw new Error(response.status >= 500 ? '服务暂时不可用，请稍后重试。' : '服务返回格式不正确，请稍后重试。') }
   }
-  if (!response.ok) throw new Error(response.status >= 500 ? '服务尚未就绪。请先启动服务端，再试一次。' : (data?.error?.message ?? `请求失败（HTTP ${response.status}）。`))
+  if (!response.ok) throw new Error(response.status >= 500 ? '服务暂时不可用，请稍后重试。' : (data?.error?.message ?? `请求失败（HTTP ${response.status}）。`))
   return data as T
 }
 
@@ -46,7 +46,9 @@ export const relTime = (iso: string) => {
   if (s < 60) return '刚刚'
   if (s < 3600) return `${Math.floor(s / 60)} 分钟前`
   if (s < 86400) return `${Math.floor(s / 3600)} 小时前`
-  return `${Math.floor(s / 86400)} 天前`
+  const days = Math.floor(s / 86400)
+  if (days < 30) return `${days} 天前`
+  return `${Math.floor(days / 30)} 个月前`
 }
 export const fmtNum = (n: number) => n.toLocaleString('en-US')
 export const condText = (conditions: unknown) => typeof conditions === 'string' ? conditions : JSON.stringify(conditions, null, 2)

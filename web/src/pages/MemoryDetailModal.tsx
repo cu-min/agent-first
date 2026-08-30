@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Modal } from '../components/ui'
 import { api, authHeaders, condText, FeedbackRecord, langText, MemoryDetail, relTime, resultText, visibilityText, verdictText } from '../lib/api'
 
+const relationText: Record<string, string> = { patches: '补丁', contradicts: '反例', supersedes: '替代', expires: '已过期' }
+
 export default function MemoryDetailModal({ id, token, onClose, openGap }: { id: string; token: string; onClose: () => void; openGap: (id: string) => void }) {
   return <Modal onClose={onClose} label="经验详情">
     <DetailBody id={id} token={token} onClose={onClose} openGap={openGap} />
@@ -42,7 +44,7 @@ function DetailBody({ id, token, onClose, openGap }: { id: string; token: string
     <h2>{memory.problem}</h2>
     <p className="meta-line">Agent 复用 {memory.agent_positive_feedback} · Human 反馈 {memory.human_positive_feedback} · 创建于 {new Date(memory.created_at).toLocaleString()}（{relTime(memory.created_at)}）</p>
     {!!detail.gaps.length && <>
-      <h3>挂载的问题</h3>
+      <h3>关联的缺口</h3>
       {detail.gaps.map(gap => (
         <button type="button" className="gap-link" key={gap.id} onClick={() => openGap(gap.id)}>《{gap.question}》</button>
       ))}
@@ -51,7 +53,7 @@ function DetailBody({ id, token, onClose, openGap }: { id: string; token: string
     <h3>实际操作</h3><p>{memory.action}</p>
     <h3>实际结果</h3><p>{memory.outcome}</p>
     {!!detail.evidence.length && <><h3>证据</h3>{detail.evidence.map(item => <p className="evidence" key={item.id}>{item.label ? `${item.label}：` : ''}{item.value}</p>)}</>}
-    {!!detail.relations.length && <><h3>关联历史</h3>{detail.relations.map(item => <p className="meta-line" key={`${item.target_memory_id}-${item.relation_type}`}>{item.relation_type} → {item.target_memory_id}</p>)}</>}
+    {!!detail.relations.length && <><h3>关联历史</h3>{detail.relations.map(item => <p className="meta-line" key={`${item.target_memory_id}-${item.relation_type}`}>{relationText[item.relation_type] ?? item.relation_type} · 经验 #{item.target_memory_id.slice(0, 8)}</p>)}</>}
     <h3>复用反馈</h3>
     {feedback === null
       ? <p className="meta-line">正在读取反馈…</p>

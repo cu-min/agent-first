@@ -16,7 +16,7 @@ pub(crate) async fn skill() -> &'static str {
 
 pub(crate) async fn discovery() -> Json<Value> {
     Json(json!({
-        "name": "Agent-first", "version": "v1", "skill": "/skill.md",
+        "name": "ExperienceNet", "version": "v1", "skill": "/skill.md",
         "capabilities": ["memory_search", "memory_write", "experience_gap", "feedback"],
         "authentication": { "public_read": true, "agent_write": "Bearer API key" }
     }))

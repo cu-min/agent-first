@@ -26,7 +26,7 @@ pub(crate) fn validate_memory_input(input: &MemoryInput) -> ApiResult<()> {
     let mut targets = HashSet::new();
     for relation in &input.relations {
         if !targets.insert(relation.target_memory_id) {
-            return Err(ApiError::bad_request("不能重复关联同一条记忆"));
+            return Err(ApiError::bad_request("不能重复关联同一条经验"));
         }
     }
     for evidence in &input.evidence {
@@ -134,7 +134,7 @@ mod tests {
             (id, "patches".to_owned()),
         ];
         let error = validate_memory_input(&input("合法的问题描述", relations)).unwrap_err();
-        assert_eq!(error.to_string(), "不能重复关联同一条记忆");
+        assert_eq!(error.to_string(), "不能重复关联同一条经验");
     }
 
     #[test]

@@ -10,13 +10,13 @@ services:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
     environment:
-      POSTGRES_DB: agentfirst
-      POSTGRES_USER: agentfirst
+      POSTGRES_DB: experiencenet
+      POSTGRES_USER: experiencenet
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
     volumes:
-      - agentfirst_pg:/var/lib/postgresql/data
+      - experiencenet_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentfirst -d agentfirst"]
+      test: ["CMD-SHELL", "pg_isready -U experiencenet -d experiencenet"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
     build: ..
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://agentfirst:${POSTGRES_PASSWORD}@db:5432/agentfirst
+      DATABASE_URL: postgres://experiencenet:${POSTGRES_PASSWORD}@db:5432/experiencenet
       BIND_ADDR: 0.0.0.0:8080
       APP_ORIGIN: https://${DOMAIN}
       STATIC_DIR: /app/web
@@ -52,8 +52,8 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?请在 .env 中设置 ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - agentfirst_caddy_data:/data
-      - agentfirst_caddy_config:/config
+      - experiencenet_caddy_data:/data
+      - experiencenet_caddy_config:/config
     depends_on:
       - server
 
@@ -65,7 +65,7 @@ services:
     command:
       - |
         while true; do
-          pg_dump -h db -U agentfirst -d agentfirst -Fc -f /backups/agentfirst-$$(date +%Y%m%d-%H%M).dump
+          pg_dump -h db -U experiencenet -d experiencenet -Fc -f /backups/experiencenet-$$(date +%Y%m%d-%H%M).dump
           find /backups -name '*.dump' -mtime +14 -delete
           sleep 86400
         done
@@ -78,6 +78,6 @@ services:
         condition: service_healthy
 
 volumes:
-  agentfirst_pg:
-  agentfirst_caddy_data:
-  agentfirst_caddy_config:
+  experiencenet_pg:
+  experiencenet_caddy_data:
+  experiencenet_caddy_config:

@@ -1,9 +1,9 @@
 #!/bin/bash
 # ============================================================
-# Agent-first 腾讯云一键部署脚本
+# ExperienceNet 腾讯云一键部署脚本
 # 使用方法：
-#   1. 上传整个项目到服务器 /opt/agent-first
-#   2. cd /opt/agent-first/deploy
+#   1. 上传整个项目到服务器 /opt/experiencenet
+#   2. cd /opt/experiencenet/deploy
 #   3. cp .env.example .env 并编辑填写
 #   4. chmod +x deploy.sh && ./deploy.sh
 # ============================================================
@@ -11,7 +11,7 @@
 set -e
 
 echo "======================================"
-echo "  Agent-first 生产部署脚本"
+echo "  ExperienceNet 生产部署脚本"
 echo "======================================"
 echo ""
 

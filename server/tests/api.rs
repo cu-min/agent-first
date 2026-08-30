@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, path::PathBuf};
 
-use agent_first::{AppConfig, AppState, SearchThresholds, build_router};
+use experiencenet::{AppConfig, AppState, SearchThresholds, build_router};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -17,7 +17,7 @@ use tower::ServiceExt;
 
 fn test_config() -> AppConfig {
     AppConfig {
-        database_url: "postgres://agentfirst@127.0.0.1:5433/agentfirst".to_owned(),
+        database_url: "postgres://experiencenet@127.0.0.1:5433/experiencenet".to_owned(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         app_origin: HeaderValue::from_static("http://localhost:5173"),
         static_dir: PathBuf::from("../web/dist"),

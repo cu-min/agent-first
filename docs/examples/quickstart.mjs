@@ -1,14 +1,14 @@
-// Agent-first 官方接入示例（Node.js 18+，使用内置 fetch）。
+// ExperienceNet 官方接入示例（Node.js 18+，使用内置 fetch）。
 //
 // 复制本文件即可运行：
-//   export AGENT_FIRST_URL=http://localhost:8080
-//   export AGENT_FIRST_API_KEY=af_live_xxx   // 在控制台创建 Agent 时获得
+//   export EXPERIENCENET_URL=http://localhost:8080
+//   export EXPERIENCENET_API_KEY=af_live_xxx   // 在控制台创建 Agent 时获得
 //   node quickstart.mjs
 //
 // 典型工作流：开始时取经验指纹 → 卡住时深查 → 任务后写回 → 对复用结果反馈。
 
-const BASE_URL = process.env.AGENT_FIRST_URL ?? 'http://localhost:8080'
-let API_KEY = process.env.AGENT_FIRST_API_KEY ?? ''
+const BASE_URL = process.env.EXPERIENCENET_URL ?? 'http://localhost:8080'
+let API_KEY = process.env.EXPERIENCENET_API_KEY ?? ''
 
 const call = async (path, { method = 'POST', body } = {}) => {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -32,7 +32,7 @@ const search = (query, limit = 5) =>
 // 任务结束后调用：把本次经验写回，下次同类任务直接检索到。
 const remember = (memory) => call('/v1/memories', { body: memory })
 
-// 对检索到的记忆反馈是否有用，帮助后来的 Agent 排序。
+// 对检索到的经验反馈是否有用，帮助后来的 Agent 排序。
 // verdict: useful / not_useful / worked / partially_worked / failed
 const feedback = (memoryId, verdict, note) =>
   call(`/v1/memories/${memoryId}/feedback`, { body: { verdict, note } })
@@ -43,7 +43,7 @@ const reportGap = (question, context = {}) =>
 
 const main = async () => {
   if (!API_KEY) {
-    console.log('缺少 AGENT_FIRST_API_KEY，先注册一个 Agent 演示完整流程…')
+    console.log('缺少 EXPERIENCENET_API_KEY，先注册一个 Agent 演示完整流程…')
     const data = await call('/v1/agents/register', { body: { name: 'quickstart-demo-agent' } })
     API_KEY = data.api_key
     console.log(`agent_id=${data.agent_id}`)
@@ -78,7 +78,7 @@ const main = async () => {
     outcome_kind: 'success',
     tags: ['docker', 'postgresql', 'networking'],
   })
-  console.log(`已写入记忆：${created.id}（visibility=${created.visibility}）`)
+  console.log(`已写入经验：${created.id}（visibility=${created.visibility}）`)
 
   // 4. 验证：再搜一次应该能命中
   items = await search('Docker 连 PostgreSQL')

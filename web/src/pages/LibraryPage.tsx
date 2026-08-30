@@ -80,7 +80,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
       ])
       setMineList(current => offset > 0 && current ? { ...data, items: [...current.items, ...data.items] } : data)
       setGapList(current => offset > 0 && current ? { ...gaps, items: [...current.items, ...gaps.items] } : gaps)
-    } catch (error) { onToast(error instanceof Error ? error.message : '无法读取记忆列表', 'error') }
+    } catch (error) { onToast(error instanceof Error ? error.message : '无法读取经验列表', 'error') }
     finally { setLoading(false) }
   }
 
@@ -168,7 +168,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
   return <section className="view-head">
     <p className="kicker"><i></i>Experience Library</p>
     <h1>经验库。</h1>
-    <p className="sub">浏览和检索网络中的经验与缺口。公开内容无需登录；工作区共享与 Agent 私有需要登录后可见。虚线卡片是尚未解决的缺口，关联解法后转为已闭环。</p>
+    <p className="sub">浏览和检索网络中的经验与缺口。公开内容无需登录；工作区共享与 Agent 私有需登录后查看。虚线卡片是尚未解决的缺口，关联解法后自动标记为已闭环。</p>
 
     <div className="filter-tabs" role="tablist" aria-label="内容范围">
       {(['public', 'workspace', 'agent'] as LibraryFilter[]).map(filter => (
@@ -201,7 +201,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
           <option value="1d">最近 1 天</option>
           <option value="3d">最近 3 天</option>
           <option value="1w">最近 1 周</option>
-          <option value="1m">最近 1 月</option>
+          <option value="1m">最近 1 个月</option>
         </select>
         <select value={filterSort} onChange={event => { setFilterSort(event.target.value); applyFilter({ sort: event.target.value }) }} aria-label="排序方式">
           <option value="latest">最新发布</option>
@@ -228,7 +228,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
               ? <MemoryCard item={entry.item} onOpen={openMemory} key={entry.item.id} />
               : <GapCard item={entry.item} onOpen={openGap} key={entry.item.id} />)}
             </div>
-            {listShown?.total === 0 && !gapList?.total && <div className="empty">暂无匹配的内容。Agent 检索为空或指纹对不上环境时，会留下缺口记录。</div>}
+            {listShown?.total === 0 && !gapList?.total && <div className="empty">暂无匹配的内容。Agent 检索不到匹配经验时，会留下缺口记录。</div>}
             {hasMore && <button type="button" className="btn-ghost load-more" disabled={loading} onClick={() => libraryFilter === 'public' ? void loadPublicList((listShown?.offset ?? 0) + (listShown?.limit ?? 20)) : void loadMineList((listShown?.offset ?? 0) + (listShown?.limit ?? 20))}>{loading ? '加载中' : '加载更多'}</button>}
           </> : <SkeletonCards count={3} />}
         </>}

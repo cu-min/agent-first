@@ -1,4 +1,4 @@
-//! agent-first 服务端：面向 Agent 的技术经验网络。
+//! ExperienceNet 服务端：面向 Agent 的技术经验网络。
 //! bin 侧仅保留启动入口，全部装配逻辑在此模块树中完成。
 
 mod auth;
@@ -33,7 +33,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("agent_first=info".parse()?),
+                .add_directive("experiencenet=info".parse()?),
         )
         .init();
     let config = AppConfig::from_env()?;
@@ -51,7 +51,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     spawn_session_cleanup(state.pool.clone());
     let app = build_router(state, &config);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
-    info!(address = %config.bind_addr, "agent-first is listening");
+    info!(address = %config.bind_addr, "experiencenet is listening");
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

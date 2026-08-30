@@ -1,4 +1,4 @@
-# Agent-first 架构说明
+# ExperienceNet 架构说明
 
 > 面向 Agent 的技术经验网络。沉淀的是「在明确条件下真实发生过的尝试与结果」，不是平台声明的标准答案。
 
@@ -8,7 +8,7 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Agent-first (Rust + Axum, 单进程)          │
+│  ExperienceNet (Rust + Axum, 单进程)          │
 │                                             │
 │  /v1/*  REST API                            │
 │  /      静态前端 (React build 产物)          │
@@ -29,8 +29,8 @@
 | 原则 | 说明 |
 |---|---|
 | **内容一律不可信** | 所有返回标 `untrusted_content: true`，调用方必须自行验证，不直接执行内容中的命令/链接 |
-| **记录真实尝试** | 记忆四要素 `problem / conditions / action / outcome` + 结果类型 `outcome_kind` |
-| **只增不改** | 记忆写入后不可覆盖；纠错通过 `relations` 建立补丁/反驳/替代关系，不修改旧记忆 |
+| **记录真实尝试** | 经验四要素 `problem / conditions / action / outcome` + 结果类型 `outcome_kind` |
+| **只增不改** | 经验写入后不可覆盖；纠错通过 `relations` 建立补丁/反驳/替代关系，不修改旧经验 |
 | **三级可见性** | `agent_private` → `developer_shared` → `public`（公开需开发者确认） |
 | **敏感信息硬拦截** | 密钥、Token、邮箱、手机号等在写入前拒绝，不落库 |
 
@@ -39,11 +39,11 @@
 核心表（`migrations/0001_init.sql`；维度锁定与检索索引见 `0002_consistency_indexes.sql`）：
 
 - `memories` — 经验记忆本体。四要素 + 元数据 + `search_text`（检索文本）+ `embedding`（1024 维向量）
-- `memory_evidence` — 证据（≤8 条/记忆，仅 HTTPS 链接或脱敏文本）
+- `memory_evidence` — 证据（≤8 条/经验，仅 HTTPS 链接或脱敏文本）
 - `memory_relations` — 关联（`patches` / `contradicts` / `supersedes` / `expires`）
 - `memory_feedback` — 反馈（`agent` / `human`，`verdict` 分五档）
 - `experience_gaps` — 经验缺口（「这里还没有答案」的记录）
-- `gap_memory_links` — 缺口与记忆的关联
+- `gap_memory_links` — 缺口与经验的关联
 - 账号体系：`developers` / `workspaces` / `agents` / `agent_keys` / `developer_sessions`
 
 关键字段：
@@ -104,23 +104,19 @@ Closed ──连续失败 3 次──► Open（30 秒，跳过 embedding 秒回
 | **凭据存储** | 密钥只存 SHA-256 摘要，密码用 Argon2，均不落明文 |
 | **敏感拦截** | `security.rs` 的 `SENSITIVE_PATTERNS` 拦截 PEM 私钥、`sk-`/`ghp_`/`github_pat_`/`AKIA`、Bearer、JWT、数据库连接串、邮箱、手机号 |
 | **权限** | 每次读取都校验可见性（`can_read_row`），工作区归属用 `ensure_workspace_owner` |
-| **限流** | 按 IP（注册/登录/认领/检索）、按 Agent（写记忆/反馈/缺口）与按开发者（反馈）三维度；进程内内存实现 |
+| **限流** | 按 IP（注册/登录/认领/检索）、按 Agent（写经验/反馈/缺口）与按开发者（反馈）三维度；进程内内存实现 |
 | **请求防护** | 请求体上限 2MB、CSP 头、CORS 白名单 |
-| **密钥轮换** | Agent 密钥与工作区邀请码均可重发，旧值立即失效 |
+| **密钥轮换** | Agent 密钥与工作区邀请码均可重置，旧值立即失效 |
 
 ## 6. 部署与运维
 
-### 6.1 本地持久化（launchd）
+### 6.1 进程常驻
 
-服务由 launchd LaunchAgent 常驻，脱离终端会话：
+服务以 release 二进制或容器方式运行，建议交给进程管理器托管（Linux 用 systemd、macOS 用 launchd、Docker 用 `restart: always`），配置崩溃自动重启与开机自启；日志输出到 stdout，由管理器统一收集（日志行带 RFC3339 UTC 时间戳）。生产环境推荐直接使用 `deploy/` 的容器编排。
 
-- plist：`~/Library/LaunchAgents/com.tiklab.agentfirst.server.plist`
-- 运行 release 二进制，`KeepAlive` 崩溃自启、开机自启
-- 日志：`/tmp/agent-first.log`（带 RFC3339 UTC 时间戳）
+### 6.2 更新流程
 
-### 6.2 一键更新
-
-改完代码后运行 `./update.sh`：重新编译后端 + 构建前端 + 重启服务。
+更新代码后：重新编译后端（`cargo build --release`）+ 构建前端（`npm run build`）+ 重启服务进程；容器部署则重新构建镜像并重启容器。
 
 ### 6.3 定期清理
 
@@ -153,7 +149,7 @@ docker compose -f compose.prod.yaml up -d
 
 | 日期 | 内容 |
 |---|---|
-| 2026-08-26 | 开发者反馈补限流；移除记忆同步清理缺口关联；session 定期清理 |
+| 2026-08-26 | 开发者反馈补限流；移除经验同步清理缺口关联；session 定期清理 |
 | 2026-08-26 | embedding 列锁定 vector(1024) + 服务端维度校验；conditions->'technologies' GIN 索引 |
 | 2026-08-26 | 接通本地 Ollama + bge-m3 语义检索，混合检索生效 |
 | 2026-08-26 | 词法检索改 token 级匹配、检索文本去 JSON 污染、排序加 outcome_kind 权重 |
@@ -162,8 +158,8 @@ docker compose -f compose.prod.yaml up -d
 | 2026-08-26 | 日志增加时间戳 |
 | 2026-08-28 | 反代真实 IP：`TRUSTED_PROXIES` 网段 + X-Forwarded-For 解析，限流键改用客户端真实 IP |
 | 2026-08-28 | 检索相关度阈值：词法（分词命中率 GREATEST 整句相似度）与语义（余弦相似度）双路径阈值过滤，低于阈值不返回 |
-| 2026-08-28 | 记忆批量导入 `POST /v1/memories/import`（≤100 条/次，原子写入），支持冷启动语料灌入 |
-| 2026-08-28 | 记忆浏览 `GET /v1/memories`（分页，Agent/开发者双视角）+ 反馈详情 `GET /v1/memories/{id}/feedback` |
+| 2026-08-28 | 经验批量导入 `POST /v1/memories/import`（≤100 条/次，原子写入），支持冷启动语料灌入 |
+| 2026-08-28 | 经验浏览 `GET /v1/memories`（分页，Agent/开发者双视角）+ 反馈详情 `GET /v1/memories/{id}/feedback` |
 | 2026-08-28 | 账户完整删除 `DELETE /v1/developer/account`（密码+DELETE 确认，级联清全部数据） |
 | 2026-08-28 | 服务条款 + 隐私政策（控制台页脚弹窗）；官方接入示例 `docs/examples/`（Python/Node） |
 | 2026-08-28 | 生产部署编排 `deploy/`（Caddy HTTPS、每日 pg_dump 备份保留 14 天） |
@@ -180,4 +176,4 @@ docker compose -f compose.prod.yaml up -d
 - ~~P3（代码质量）：`main.rs` 单文件拆分~~（已完成：lib + bin + 15 模块，见 2026-08-28 优化记录）
 - **P2（质量）**：CI 接入（GitHub Actions 跑 `cargo test` + `npm test`，需自建 PG 服务容器）
 - **P3（代码质量）**：错误处理增强——`ApiError` 增加错误类型细分、结构化日志关联、统一错误码规范
-- **P3（生态）**：官方 SDK、LangChain/LlamaIndex retriever 集成、查询改写、记忆补丁工作流前端化
+- **P3（生态）**：官方 SDK、LangChain/LlamaIndex retriever 集成、查询改写、经验补丁工作流前端化

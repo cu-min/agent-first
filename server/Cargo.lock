@@ -3,30 +3,6 @@
 version = 4
 
 [[package]]
-name = "agent-first"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "axum",
- "dotenvy",
- "once_cell",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "time",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,6 +361,30 @@ checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
 dependencies = [
  "parking",
  "pin-project-lite",
+]
+
+[[package]]
+name = "experiencenet"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "axum",
+ "dotenvy",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]

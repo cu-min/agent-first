@@ -91,7 +91,7 @@ mod tests {
     // 独占变量名避免并行测试污染；edition 2024 中 env 写入是 unsafe。
     #[test]
     fn parse_score_env_accepts_only_in_range_values() {
-        const NAME: &str = "AGENT_FIRST_TEST_SCORE";
+        const NAME: &str = "EXPERIENCENET_TEST_SCORE";
         unsafe { env::remove_var(NAME) };
         assert_eq!(parse_score_env(NAME, 0.5), 0.5);
         unsafe { env::set_var(NAME, "0.42") };
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn parse_score_env_falls_back_on_invalid_input() {
-        const NAME: &str = "AGENT_FIRST_TEST_INVALID_SCORE";
+        const NAME: &str = "EXPERIENCENET_TEST_INVALID_SCORE";
         for raw in ["1.5", "-0.1", "abc", ""] {
             unsafe { env::set_var(NAME, raw) };
             assert_eq!(parse_score_env(NAME, 0.25), 0.25, "raw = {raw:?}");

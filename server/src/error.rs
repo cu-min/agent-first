@@ -36,6 +36,13 @@ impl ApiError {
             message: "需要有效身份凭证".to_owned(),
         }
     }
+    pub(crate) fn unauthorized_msg(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: message.into(),
+        }
+    }
     pub(crate) fn forbidden(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::FORBIDDEN,

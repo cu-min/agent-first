@@ -34,7 +34,7 @@ pub(crate) async fn insert_memory(
     let requested_visibility = input.visibility.unwrap_or(Visibility::AgentPrivate);
     if requested_visibility == Visibility::Public {
         return Err(ApiError::bad_request(
-            "不能直接公开记忆，请使用 request_public",
+            "不能直接公开经验，请使用 request_public",
         ));
     }
     let (visibility, publication_requested, published_at) = if input.request_public {
@@ -65,7 +65,7 @@ pub(crate) async fn insert_memory(
     };
     for relation in &input.relations {
         if !can_read_memory(&state.pool, relation.target_memory_id, Some(agent)).await? {
-            return Err(ApiError::forbidden("不能关联不可访问的记忆"));
+            return Err(ApiError::forbidden("不能关联不可访问的经验"));
         }
     }
     if let Some(gap_id) = input.gap_id {
