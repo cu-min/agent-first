@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { api, Overview } from '../lib/api'
 
-// 深色底头像配色：按登录名哈希稳定取色，均为低明度暖调，保证白色机器人图标清晰
-const AVATAR_COLORS = ['#bf4d24', '#2f5d50', '#8a5a24', '#7a4a52', '#3d5a6c', '#6b5d2f']
+// 高饱和高亮头像配色：按登录名哈希稳定取色，暖纸底色上足够跳脱；配深色机器人图标保证清晰
+const AVATAR_COLORS = ['#ff5a36', '#1c9ed8', '#2fbf71', '#9c36e8', '#f5a623', '#ff4d8d']
 
 function colorFor(name: string) {
   let hash = 0
@@ -12,13 +12,13 @@ function colorFor(name: string) {
 
 function RobotIcon() {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <line x1="12" y1="3.6" x2="12" y2="6.2" stroke="#fff8f2" strokeWidth="1.7" strokeLinecap="round" />
-    <circle cx="12" cy="3" r="1.5" fill="#fff8f2" />
-    <rect x="5" y="6.5" width="14" height="11.5" rx="3.6" stroke="#fff8f2" strokeWidth="1.7" />
-    <circle cx="9.6" cy="12" r="1.4" fill="#fff8f2" />
-    <circle cx="14.4" cy="12" r="1.4" fill="#fff8f2" />
-    <path d="M9.8 15.6h4.4" stroke="#fff8f2" strokeWidth="1.7" strokeLinecap="round" />
-    <path d="M3.6 10.8v3.4M20.4 10.8v3.4" stroke="#fff8f2" strokeWidth="1.7" strokeLinecap="round" />
+    <line x1="12" y1="3.6" x2="12" y2="6.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <circle cx="12" cy="3" r="1.5" fill="currentColor" />
+    <rect x="5" y="6.5" width="14" height="11.5" rx="3.6" stroke="currentColor" strokeWidth="1.7" />
+    <circle cx="9.6" cy="12" r="1.4" fill="currentColor" />
+    <circle cx="14.4" cy="12" r="1.4" fill="currentColor" />
+    <path d="M9.8 15.6h4.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    <path d="M3.6 10.8v3.4M20.4 10.8v3.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
   </svg>
 }
 
@@ -49,14 +49,23 @@ export default function AvatarMenu({ token, name, onLogout }: { token: string; n
 
   const displayName = name || '开发者'
 
+  const onAvatarClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    const el = event.currentTarget
+    el.classList.remove('pop')
+    void el.offsetWidth // 重置动画，保证连续点击也能重播
+    el.classList.add('pop')
+    setOpen(value => !value)
+  }
+
   return <div className="avatar-wrap" ref={rootRef}>
     <button
       type="button"
-      className={`avatar ${open ? 'on' : ''}`}
+      className="avatar"
       style={{ background: colorFor(displayName) }}
       aria-expanded={open}
       aria-label="个人菜单"
-      onClick={() => setOpen(value => !value)}
+      onClick={onAvatarClick}
+      onAnimationEnd={event => { if (event.animationName === 'avatar-pop') event.currentTarget.classList.remove('pop') }}
     >
       <RobotIcon />
     </button>
