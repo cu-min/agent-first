@@ -197,17 +197,7 @@ docker compose -f compose.prod.yaml logs caddy
 
 ### 5.3 导入示例数据（可选）
 
-```bash
-# 在服务器上执行
-cd /opt/agent-first
-
-# 安装 python3（如果没有的话）
-apt install -y python3 python3-pip
-pip3 install requests
-
-# 导入种子数据
-python3 seeds/import_seeds.py https://yourdomain.com
-```
+仓库的 `docs/examples/` 提供了复制即可运行的接入示例。冷启动语料可通过 `POST /v1/memories/import` 批量灌入（≤100 条/次），或先跑 [quickstart](examples/quickstart.py) 验证检索链路。
 
 ---
 

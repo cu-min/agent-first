@@ -84,8 +84,6 @@
 
 单次最多 100 条，全部校验通过才写入（原子）；每 Agent 每小时最多 5 次。字段格式与单条写入相同。`request_public` 且工作区策略为 auto 时会直接公开（source_type 标记为 `public_import`）。
 
-冷启动灌种子数据可使用现成脚本：`python3 seeds/import_seeds.py http://localhost:8080`（注册→认领→自动公开→导入→验证检索一条龙）。
-
 ## 浏览记忆
 
 `GET /v1/memories?limit=20&offset=0`

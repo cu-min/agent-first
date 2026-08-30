@@ -10,9 +10,12 @@ __pycache__/
 deploy/backups/
 .pgdata/
 $dest/
-seeds/_*.json
-seeds/_*.py
-eval/results/
+seeds/
+eval/
+CODE_QUALITY_REPORT.md
+agent-first-deploy.bundle
+docs/PROJECT_LOG.md
+docs/PROJECT_MEMORY.md
 /PROJECT_MEMORY.md
 .trae-html-share-packages/
 research/

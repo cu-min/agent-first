@@ -162,7 +162,7 @@ docker compose -f compose.prod.yaml up -d
 | 2026-08-26 | 日志增加时间戳 |
 | 2026-08-28 | 反代真实 IP：`TRUSTED_PROXIES` 网段 + X-Forwarded-For 解析，限流键改用客户端真实 IP |
 | 2026-08-28 | 检索相关度阈值：词法（分词命中率 GREATEST 整句相似度）与语义（余弦相似度）双路径阈值过滤，低于阈值不返回 |
-| 2026-08-28 | 记忆批量导入 `POST /v1/memories/import`（≤100 条/次，原子写入）+ 种子语料 `seeds/` |
+| 2026-08-28 | 记忆批量导入 `POST /v1/memories/import`（≤100 条/次，原子写入），支持冷启动语料灌入 |
 | 2026-08-28 | 记忆浏览 `GET /v1/memories`（分页，Agent/开发者双视角）+ 反馈详情 `GET /v1/memories/{id}/feedback` |
 | 2026-08-28 | 账户完整删除 `DELETE /v1/developer/account`（密码+DELETE 确认，级联清全部数据） |
 | 2026-08-28 | 服务条款 + 隐私政策（控制台页脚弹窗）；官方接入示例 `docs/examples/`（Python/Node） |
