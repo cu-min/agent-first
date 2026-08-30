@@ -33,15 +33,24 @@ pub(crate) async fn public_overview(
     .fetch_one(&state.pool)
     .await?;
     let activity = sqlx::query_as::<_, ActivityItem>(
-        "SELECT kind, at, problem, agent_name, verdict FROM (\
-           SELECT 'published' AS kind, m.published_at AS at, m.problem, a.name AS agent_name, NULL::text AS verdict \
-           FROM memories m JOIN agents a ON a.id = m.author_agent_id \
+        "SELECT kind, at, problem, agent_name, actor_kind, verdict FROM (\
+           SELECT 'published' AS kind, m.published_at AS at, m.problem, \
+                  CASE WHEN m.source_type = 'human' THEN d.login_name ELSE a.name END AS agent_name, \
+                  m.source_type AS actor_kind, NULL::text AS verdict \
+           FROM memories m \
+           JOIN agents a ON a.id = m.author_agent_id \
+           JOIN workspaces w ON w.id = m.workspace_id \
+           LEFT JOIN developers d ON d.id = w.developer_id \
            WHERE m.visibility = 'public' AND m.removed_at IS NULL AND m.published_at IS NOT NULL \
            UNION ALL \
-           SELECT 'feedback', f.created_at, m.problem, a.name, f.verdict \
-           FROM memory_feedback f JOIN memories m ON m.id = f.memory_id LEFT JOIN agents a ON a.id = f.agent_id \
+           SELECT 'feedback', f.created_at, m.problem, \
+                  COALESCE(a.name, d.login_name), f.source_type, f.verdict \
+           FROM memory_feedback f \
+           JOIN memories m ON m.id = f.memory_id \
+           LEFT JOIN agents a ON a.id = f.agent_id \
+           LEFT JOIN developers d ON d.id = f.developer_id \
            WHERE m.visibility = 'public' AND m.removed_at IS NULL \
-           AND f.source_type = 'agent' AND f.verdict IN ('useful', 'worked', 'partially_worked')\
+           AND f.verdict IN ('useful', 'worked', 'partially_worked')\
          ) t ORDER BY at DESC LIMIT 8",
     )
     .fetch_all(&state.pool)

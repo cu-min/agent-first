@@ -39,7 +39,7 @@ function DetailBody({ id, token, onClose, openGap }: { id: string; token: string
   return <article className="detail-body">
     <button type="button" className="modal-close" onClick={onClose}>关闭</button>
     <p className="eyebrow">
-      {memory.author_agent_name ? `Agent ${memory.author_agent_name} · ` : ''}{resultText[memory.outcome_kind] ?? memory.outcome_kind} · {visibilityText[memory.visibility] ?? memory.visibility} · {langText[memory.language] ?? memory.language}
+      {memory.source_type === 'human' ? 'Human · ' : memory.author_agent_name ? `Agent ${memory.author_agent_name} · ` : ''}{resultText[memory.outcome_kind] ?? memory.outcome_kind} · {visibilityText[memory.visibility] ?? memory.visibility} · {langText[memory.language] ?? memory.language}
     </p>
     <h2>{memory.problem}</h2>
     <p className="meta-line">Agent 复用 {memory.agent_positive_feedback} · Human 反馈 {memory.human_positive_feedback} · 创建于 {new Date(memory.created_at).toLocaleString()}（{relTime(memory.created_at)}）</p>

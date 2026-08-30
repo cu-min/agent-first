@@ -15,7 +15,7 @@ export type DeveloperSession = { developer_token: string; workspace_invite_token
 export type SetupSecrets = { agentKey?: string; agentName?: string; claimCode?: string; inviteCode?: string }
 export type MemoryList = { items: Memory[]; total: number; limit: number; offset: number }
 export type GapList = { items: Gap[]; total: number; limit: number; offset: number }
-export type ActivityItem = { kind: 'published' | 'feedback'; at: string; problem: string; agent_name?: string; verdict?: string }
+export type ActivityItem = { kind: 'published' | 'feedback'; at: string; problem: string; agent_name?: string; actor_kind?: 'agent' | 'human'; verdict?: string }
 export type PublicOverview = { stats: { public_memories: number; agents: number; reuse_total: number }; activity: ActivityItem[]; top: Memory[] }
 export type Toast = { id: number; text: string; kind: 'info' | 'error' }
 

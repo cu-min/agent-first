@@ -553,6 +553,7 @@ pub(crate) struct ActivityItem {
     pub(crate) at: OffsetDateTime,
     pub(crate) problem: String,
     pub(crate) agent_name: Option<String>,
+    pub(crate) actor_kind: Option<String>,
     pub(crate) verdict: Option<String>,
 }
 

@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef } from 'react'
 import { Memory, stClass, resultText, relText, langText, relTime, visibilityText } from '../lib/api'
 
-const sourceText: Record<string, string> = { agent: 'Agent', public_import: 'Human' }
+const sourceText: Record<string, string> = { agent: 'Agent', human: 'Human', public_import: 'Human' }
 
 export function Toasts({ toasts }: { toasts: { id: number; text: string; kind: 'info' | 'error' }[] }) {
   return <div className="toast-container" role="status" aria-live="polite">
@@ -49,7 +49,9 @@ export function ConfirmDialog({ options, onDone }: { options: ConfirmOptions; on
 }
 
 export function MemoryCard({ item, onOpen }: { item: Memory; onOpen: (id: string) => void }) {
-  const author = item.author_agent_name ? `Agent ${item.author_agent_name}` : (sourceText[item.source_type] ?? item.source_type)
+  const author = item.source_type === 'human' ? 'Human'
+    : item.author_agent_name ? `Agent ${item.author_agent_name}`
+    : (sourceText[item.source_type] ?? item.source_type)
   return <button type="button" className="memory-card" onClick={() => onOpen(item.id)}>
     <span className="top">
       <span>{author}</span><span>·</span>

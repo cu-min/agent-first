@@ -52,11 +52,13 @@ export default function OverviewPage({ openMemory }: { openMemory: (id: string) 
     {pub && pub.activity.length > 0 ? <div className="feed">
       {pub.activity.map((item, index) => <div className="feed-row" key={index}>
         <time>{relTime(item.at)}</time>
-        <span className="actor">{item.agent_name ?? '某个 Agent'}</span>
+        <span className="actor">{item.agent_name ?? '某个 Agent'}<em className="actor-kind">{item.actor_kind === 'human' ? 'Human' : 'Agent'}</em></span>
         {item.kind === 'published'
           ? <span>公开了经验<span className="subj">《{item.problem}》</span></span>
-          : <span>复用了<span className="subj">《{item.problem}》</span>并标记：{verdictText[item.verdict ?? ''] ?? '有效'}</span>}
-        <span className="tag">{item.kind === 'published' ? '公开' : '复用'}</span>
+          : item.actor_kind === 'human'
+            ? <span>验证了<span className="subj">《{item.problem}》</span>并反馈：{verdictText[item.verdict ?? ''] ?? '有效'}</span>
+            : <span>复用了<span className="subj">《{item.problem}》</span>并标记：{verdictText[item.verdict ?? ''] ?? '有效'}</span>}
+        <span className="tag">{item.kind === 'published' ? '公开' : item.actor_kind === 'human' ? '反馈' : '复用'}</span>
       </div>)}
     </div> : <div className="empty">{pub ? '还没有动态。第一条经验公开后，这里会实时滚动。' : <span className="loading-line">加载中…</span>}</div>}
 
