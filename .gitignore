@@ -20,3 +20,4 @@ docs/PROJECT_MEMORY.md
 .trae-html-share-packages/
 research/
 /update.sh
+.ops-secrets/
