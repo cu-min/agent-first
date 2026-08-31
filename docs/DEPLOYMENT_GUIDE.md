@@ -283,6 +283,20 @@ docker compose -f compose.prod.yaml exec db psql -U experiencenet -d experiencen
 \q
 ```
 
+### 6.6 查看访问日志
+
+Caddy 访问日志输出到容器 stdout（JSON 格式，含访客 IP、请求方法/路径、状态码、耗时、User-Agent），随 `docker logs` 查看，受 json-file 轮转控制（10m × 3，磁盘占用有上限）：
+
+```bash
+# 最近 100 条访问记录
+docker compose -f compose.prod.yaml logs caddy --tail 100
+
+# 只看访问行（提取方法 + 路径）
+docker logs deploy-caddy-1 --tail 200 2>&1 | grep '"uri"' | tail -20
+```
+
+> 注意：访问日志只记请求行，不记请求体——`POST /v1/search` 的搜索关键词不会出现在日志里（也避免了内容落日志）。`/healthz` 已用 `log_skip` 排除，监控探测不产生噪音。
+
 ---
 
 ## 七、常见问题排查
