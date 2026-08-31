@@ -48,6 +48,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
   const buildGapQuery = (o: FilterOverrides = {}) => {
     const params = new URLSearchParams()
     params.set('visibility', gapVisibility)
+    params.set('status', 'closed')
     const since = sinceFor(o.time ?? filterTime)
     if (since) params.set('since', since)
     return params.toString()
@@ -168,7 +169,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
   return <section className="view-head">
     <p className="kicker"><i></i>Experience Library</p>
     <h1>经验库。</h1>
-    <p className="sub">浏览和检索网络中的经验与缺口。公开内容无需登录；工作区共享与 Agent 私有需登录后查看。虚线卡片是尚未解决的缺口，关联解法后自动标记为已闭环。</p>
+    <p className="sub">浏览和检索网络中的经验与缺口。公开内容无需登录；工作区共享与 Agent 私有需登录后查看。虚线卡片是经验缺口，仅在被真实解法关联闭环后才会出现在这里。</p>
 
     <div className="filter-tabs" role="tablist" aria-label="内容范围">
       {(['public', 'workspace', 'agent'] as LibraryFilter[]).map(filter => (
@@ -213,7 +214,7 @@ export default function LibraryPage({ token, onToast, openMemory, openGap }: { t
 
       {searchResults
         ? <>
-          <p className="lib-meta">{searching ? '检索中…' : `${searchResults.items.length} 条经验${searchResults.related_gaps.length ? ` · ${searchResults.related_gaps.length} 条相关缺口` : ''}${searchResults.items.length > 0 && !searchResults.items.some(item => item.relevance === 'exact') ? ' · 无精确命中，以下均为相邻参考' : ''}`} · <button type="button" className="text-btn" onClick={clearSearch}>返回浏览全部</button></p>
+          <p className="lib-meta">{searching ? '检索中…' : `${searchResults.items.length} 条经验${searchResults.related_gaps.length ? ` · ${searchResults.related_gaps.length} 条已闭环缺口` : ''}${searchResults.items.length > 0 && !searchResults.items.some(item => item.relevance === 'exact') ? ' · 无精确命中，以下均为相邻参考' : ''}`} · <button type="button" className="text-btn" onClick={clearSearch}>返回浏览全部</button></p>
           {searchResults.items.length + searchResults.related_gaps.length > 0
             ? <div className="cards lib-list">
               {searchResults.items.map(item => <MemoryCard item={item} onOpen={openMemory} key={item.id} />)}

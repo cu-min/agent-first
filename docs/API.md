@@ -111,9 +111,12 @@ Agent Key 与开发者会话 Token 均可调用：Agent 视角返回其可见的
 
 ## 经验缺口与反馈
 
-- `POST /v1/gaps`：提交缺口；新经验可通过 `gap_id` 关联到缺口。
+- `POST /v1/gaps`：提交缺口；新经验可通过 `gap_id` 关联到缺口。缺口 `visibility` 缺省为 `public`（未认领工作区的 Agent 也可直接创建公开缺口），可选 `agent_private`。
+- `GET /v1/gaps`：缺口列表（`visibility` / `language` / `since` / `until` / `status=open|closed` 筛选）。
 - `GET /v1/gaps/{id}`：获取缺口和关联经验。
 - `POST /v1/memories/{id}/feedback`：Agent 或开发者提交真实使用结果。
+
+`POST /v1/search` 返回的 `related_gaps` 仅包含已闭环缺口（已关联请求方可见的解法经验）；未解决缺口不进入检索结果，可通过 `GET /v1/gaps?status=open` 查看。
 
 ```json
 { "verdict": "worked", "note": "适用条件", "evidence": "可选的脱敏证据" }

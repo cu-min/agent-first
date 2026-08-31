@@ -303,8 +303,7 @@ pub(crate) async fn get_memory(
     let relations = sqlx::query_as::<_, RelationRecord>(
         "SELECT target_memory_id, relation_type, created_at FROM memory_relations WHERE source_memory_id = $1 ORDER BY created_at ASC",
     ).bind(id).fetch_all(&state.pool).await?;
-    let (shared_workspaces, full_workspaces, agent_id) =
-        crate::auth::read_scope(&principal);
+    let (shared_workspaces, full_workspaces, agent_id) = crate::auth::read_scope(&principal);
     let gaps = sqlx::query_as::<_, GapBacklink>(
         "SELECT g.id, g.question FROM gap_memory_links l JOIN experience_gaps g ON g.id = l.gap_id \
          WHERE l.memory_id = $1 AND g.removed_at IS NULL AND (g.visibility = 'public' \

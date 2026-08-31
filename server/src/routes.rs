@@ -35,7 +35,13 @@ use crate::{
 pub fn build_router(state: AppState, config: &AppConfig) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(config.app_origin.clone())
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
     let security_headers = SetResponseHeaderLayer::if_not_present(
         header::CONTENT_SECURITY_POLICY,

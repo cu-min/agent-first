@@ -153,7 +153,9 @@ pub(crate) async fn rename_agent(
         .execute(&state.pool)
         .await?;
     info!(agent_id = %id, "agent renamed");
-    Ok(Json(serde_json::json!({ "agent_id": id, "name": input.name.trim() })))
+    Ok(Json(
+        serde_json::json!({ "agent_id": id, "name": input.name.trim() }),
+    ))
 }
 
 pub(crate) async fn rotate_agent_key(

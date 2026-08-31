@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    auth::{read_scope, resolve_read_principal, ReadPrincipal},
+    auth::{ReadPrincipal, read_scope, resolve_read_principal},
     authz::{can_read_row_principal, load_gap_access},
     error::{ApiError, ApiResult},
     models::{
@@ -52,10 +52,7 @@ pub(crate) async fn create_gap(
     security::validate_text(&input.question, "缺口问题", 2, 1600).map_err(ApiError::bad_request)?;
     validate_json(&input.context, "缺口条件", 6000)?;
     validate_optional_text(&input.attempted, "已尝试内容", 2000)?;
-    let visibility = input.visibility.unwrap_or(Visibility::DeveloperShared);
-    if visibility == Visibility::Public && agent.developer_id.is_none() {
-        return Err(ApiError::forbidden("工作区认领后才能创建公开经验缺口"));
-    }
+    let visibility = input.visibility.unwrap_or(Visibility::Public);
     let language = input.language.unwrap_or_else(|| "zh-CN".to_owned());
     security::validate_text(&language, "语言", 2, 20).map_err(ApiError::bad_request)?;
     let gap_text = format!(
@@ -99,20 +96,27 @@ pub(crate) async fn related_gaps_for_query(
         .map(|row| {
             (
                 row.get::<Uuid, _>("id"),
-                (row.get::<String, _>("question"), row.get::<i64, _>("linked_count")),
+                (
+                    row.get::<String, _>("question"),
+                    row.get::<i64, _>("linked_count"),
+                ),
             )
         })
         .collect();
-    // hits 按余弦距离升序（分数降序）返回，filter_map 保持该顺序
+    // hits 按余弦距离升序（分数降序）返回，filter_map 保持该顺序；
+    // 仅保留已闭环（请求方可见解法数 > 0）的缺口
     Ok(hits
         .into_iter()
         .filter_map(|(id, score)| {
-            details.get(&id).map(|(question, linked)| RelatedGap {
-                id,
-                question: question.clone(),
-                closed: *linked > 0,
-                score,
-            })
+            details
+                .get(&id)
+                .filter(|(_, linked)| *linked > 0)
+                .map(|(question, _)| RelatedGap {
+                    id,
+                    question: question.clone(),
+                    closed: true,
+                    score,
+                })
         })
         .collect())
 }
@@ -140,14 +144,12 @@ pub(crate) async fn list_gaps(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let since = query
-        .since
-        .as_deref()
-        .and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
-    let until = query
-        .until
-        .as_deref()
-        .and_then(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok());
+    let since = query.since.as_deref().and_then(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
+    });
+    let until = query.until.as_deref().and_then(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
+    });
 
     let mut conditions = vec![GAP_SCOPE.to_owned()];
     let mut param_idx = 4;
@@ -176,11 +178,18 @@ pub(crate) async fn list_gaps(
         _ => "g.created_at DESC".to_owned(),
     };
     let where_clause = conditions.join(" AND ");
-    let total_sql = format!("SELECT count(*) FROM experience_gaps g WHERE {}", where_clause);
+    let total_sql = format!(
+        "SELECT count(*) FROM experience_gaps g WHERE {}",
+        where_clause
+    );
     let list_sql = format!(
         "SELECT g.id, g.visibility, g.question, g.context, g.attempted, g.language, g.created_at, {} AS linked_count \
          FROM experience_gaps g WHERE {} ORDER BY {} LIMIT ${} OFFSET ${}",
-        LINK_READABLE, where_clause, order, param_idx, param_idx + 1
+        LINK_READABLE,
+        where_clause,
+        order,
+        param_idx,
+        param_idx + 1
     );
 
     let mut total_query = sqlx::query_scalar::<_, i64>(&total_sql)

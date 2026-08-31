@@ -1,6 +1,5 @@
 use std::{net::SocketAddr, path::PathBuf};
 
-use experiencenet::{AppConfig, AppState, SearchThresholds, build_router};
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -11,6 +10,7 @@ use axum::{
     },
     response::Response,
 };
+use experiencenet::{AppConfig, AppState, SearchThresholds, build_router};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -205,8 +205,7 @@ async fn agent_memory_lifecycle_from_create_to_search(pool: PgPool) {
     );
     assert_eq!(detail["memory"]["language"], "zh-CN");
     assert_eq!(
-        detail["memory"]["author_agent_name"],
-        "生命周期 Agent",
+        detail["memory"]["author_agent_name"], "生命周期 Agent",
         "记忆摘要应携带作者 Agent 名"
     );
     assert_eq!(detail["untrusted_content"], true);
@@ -248,10 +247,7 @@ async fn agent_memory_lifecycle_from_create_to_search(pool: PgPool) {
             item["relevance"], "related",
             "无语义通道（embedding 未配置）时命中条目应降级为 related"
         );
-        assert!(
-            item.get("score").is_none(),
-            "仅词法通道命中不应携带语义分"
-        );
+        assert!(item.get("score").is_none(), "仅词法通道命中不应携带语义分");
     }
 }
 
@@ -474,7 +470,11 @@ async fn gap_lifecycle_from_create_to_closed_solution(pool: PgPool) {
 
     let anonymous_list = send(&app, Method::GET, "/v1/gaps", None, None).await;
     assert_eq!(anonymous_list.status(), StatusCode::OK);
-    assert_eq!(payload(anonymous_list).await["total"], 0, "匿名不应看到 developer_shared 缺口");
+    assert_eq!(
+        payload(anonymous_list).await["total"],
+        1,
+        "缺口默认公开，匿名应可见"
+    );
 
     let open_list = send(
         &app,
@@ -520,7 +520,10 @@ async fn gap_lifecycle_from_create_to_closed_solution(pool: PgPool) {
     assert_eq!(closed_list.status(), StatusCode::OK);
     let closed_list = payload(closed_list).await;
     assert_eq!(closed_list["total"], 1);
-    assert_eq!(closed_list["items"][0]["linked_count"], 1, "关联解法后缺口应转为已闭环");
+    assert_eq!(
+        closed_list["items"][0]["linked_count"], 1,
+        "关联解法后缺口应转为已闭环"
+    );
 
     let still_open = send(
         &app,
@@ -556,7 +559,11 @@ async fn gap_lifecycle_from_create_to_closed_solution(pool: PgPool) {
         .iter()
         .filter_map(|item| item["id"].as_str())
         .collect();
-    assert_eq!(solutions, vec![memory_id.as_str()], "缺口详情应包含关联解法");
+    assert_eq!(
+        solutions,
+        vec![memory_id.as_str()],
+        "缺口详情应包含关联解法"
+    );
 
     let memory_detail = send(
         &app,
@@ -568,7 +575,11 @@ async fn gap_lifecycle_from_create_to_closed_solution(pool: PgPool) {
     .await;
     assert_eq!(memory_detail.status(), StatusCode::OK);
     let memory_detail = payload(memory_detail).await;
-    assert_eq!(memory_detail["gaps"][0]["id"].as_str().unwrap(), gap_id, "记忆详情应反向挂载缺口");
+    assert_eq!(
+        memory_detail["gaps"][0]["id"].as_str().unwrap(),
+        gap_id,
+        "记忆详情应反向挂载缺口"
+    );
 
     let feedback = send(
         &app,
@@ -680,7 +691,10 @@ async fn console_agent_management_flow(pool: PgPool) {
     assert_eq!(agent["memory_count"], 1);
     assert_eq!(agent["public_count"], 0);
     assert_eq!(agent["feedback_count"], 0);
-    assert!(agent["last_active_at"].as_str().is_some(), "写入过经验的 Agent 应有最近活跃时间");
+    assert!(
+        agent["last_active_at"].as_str().is_some(),
+        "写入过经验的 Agent 应有最近活跃时间"
+    );
 
     let add = send(
         &app,
@@ -693,7 +707,10 @@ async fn console_agent_management_flow(pool: PgPool) {
     assert_eq!(add.status(), StatusCode::OK);
     let add = payload(add).await;
     assert!(add["api_key"].as_str().is_some());
-    assert!(add["claim_token"].as_null().is_some(), "代建 Agent 不应产生认领码");
+    assert!(
+        add["claim_token"].as_null().is_some(),
+        "代建 Agent 不应产生认领码"
+    );
     let new_agent_id = add["agent_id"].as_str().unwrap().to_owned();
 
     let rename = send(
@@ -722,7 +739,10 @@ async fn console_agent_management_flow(pool: PgPool) {
         .iter()
         .filter_map(|item| item["name"].as_str())
         .collect();
-    assert!(names.contains(&"改名后的 Agent"), "改名应反映在 overview 中");
+    assert!(
+        names.contains(&"改名后的 Agent"),
+        "改名应反映在 overview 中"
+    );
     let new_agent_stats = overview_after["agents"]
         .as_array()
         .unwrap()
@@ -746,7 +766,9 @@ async fn console_agent_management_flow(pool: PgPool) {
         Method::POST,
         "/v1/agents",
         Some(&developer_token),
-        Some(json!({ "workspace_id": "22222222-2222-2222-2222-222222222222", "name": "越权 Agent" })),
+        Some(
+            json!({ "workspace_id": "22222222-2222-2222-2222-222222222222", "name": "越权 Agent" }),
+        ),
     )
     .await;
     assert_eq!(add_to_foreign_workspace.status(), StatusCode::FORBIDDEN);
