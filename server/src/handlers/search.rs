@@ -5,10 +5,11 @@ use axum::{
     extract::{ConnectInfo, State},
     http::HeaderMap,
 };
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    auth::resolve_read_principal,
+    auth::{ReadPrincipal, resolve_read_principal},
     embed::embed_with_breaker,
     error::{ApiError, ApiResult},
     handlers::gaps::related_gaps_for_query,
@@ -77,7 +78,7 @@ pub(crate) async fn search(
         fetch_memory_summaries(&state.pool, &merge_ranks(&lexical, &semantic, limit)).await?;
     let include_action = input.detail == SearchDetail::Full;
     let semantic_scores: HashMap<Uuid, f64> = semantic.iter().copied().collect();
-    let items = summaries
+    let items: Vec<SearchHit> = summaries
         .into_iter()
         .map(|summary| {
             let score = semantic_scores.get(&summary.id).copied();
@@ -89,14 +90,34 @@ pub(crate) async fn search(
             )
         })
         .collect();
+    let retrieval = if semantic.is_empty() {
+        "lexical"
+    } else {
+        "hybrid_rrf"
+    };
+    // 查询日志：query 已过 validate_text 敏感拦截（含密钥/邮箱/手机号的请求在上方被 400 拒绝，不会到达这里）
+    info!(
+        query = %input.query,
+        ip = %client_ip(&address, &headers, &state.trusted_proxies),
+        principal = principal_kind(&principal),
+        language = language.as_deref().unwrap_or("-"),
+        hits = items.len(),
+        gaps = related_gaps.len(),
+        retrieval,
+        "search served"
+    );
     Ok(Json(SearchOutput {
         items,
         related_gaps,
-        retrieval: if semantic.is_empty() {
-            "lexical"
-        } else {
-            "hybrid_rrf"
-        },
+        retrieval,
         untrusted_content: true,
     }))
+}
+
+fn principal_kind(principal: &ReadPrincipal) -> &'static str {
+    match principal {
+        ReadPrincipal::Agent(_) => "agent",
+        ReadPrincipal::Developer { .. } => "developer",
+        ReadPrincipal::Anonymous => "anonymous",
+    }
 }

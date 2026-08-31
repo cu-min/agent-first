@@ -1,8 +1,8 @@
 [target.x86_64-pc-windows-gnu]
 linker = "rust-lld"
 
-# 供 #[sqlx::test] 宏在编译期与运行期读取；本地 trust 认证无需口令。
+# 供 #[sqlx::test] 宏在编译期与运行期读取；口令与 compose.yaml 本地开发库一致。
 # 注意：cargo 启动的进程里该值优先于 .env（dotenvy 不覆盖已存在变量），两者指向同一库。
 [env]
-DATABASE_URL = "postgres://experiencenet@127.0.0.1:5433/experiencenet"
+DATABASE_URL = "postgres://experiencenet:experiencenet_dev_only@127.0.0.1:5433/experiencenet"
 
